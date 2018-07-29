@@ -24,6 +24,8 @@ from fram import Fram
 nthreads = 8
 
 dirs = glob.glob('/mnt/data0/auger/*/*')
+dirs += glob.glob('/mnt/data0/cta-s0/2*/*')
+
 dirs.sort(reverse=True)
 
 print len(dirs), "dirs"
@@ -35,15 +37,18 @@ def process_dir(dir):
 
     print night, '/', dir
     files = glob.glob('%s/[0-9]*/WF*/*.fits' % dir)
-    # files = glob.glob('%s/skyflats/WF*/*.fits' % dir)
+    files += glob.glob('%s/darks/WF*/*.fits' % dir)
+    files += glob.glob('%s/skyflats/WF*/*.fits' % dir)
     files.sort()
 
-    if len(files) == fram.query('select count(*) from images where night=%s limit 1', (night,), simplify=True):
-        return
+    res = fram.query('select filename from images where night=%s', (night,), simplify=False)
+    filenames = [_['filename'] for _ in res]
 
     j = 0
 
     for j,filename in enumerate(files):
+        if filename in filenames:
+            continue
         try:
             header = pyfits.getheader(filename)
             image = pyfits.getdata(filename)
