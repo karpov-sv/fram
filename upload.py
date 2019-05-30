@@ -25,6 +25,7 @@ nthreads = 8
 
 dirs = glob.glob('/mnt/data0/auger/*/*')
 dirs += glob.glob('/mnt/data0/cta-s0/2*/*')
+dirs += glob.glob('/mnt/data0/cta-n/2*/*')
 
 dirs.sort(reverse=True)
 
@@ -36,9 +37,9 @@ def process_dir(dir):
     night = posixpath.split(dir)[-1]
 
     print night, '/', dir
-    files = glob.glob('%s/[0-9]*/WF*/*.fits' % dir)
-    files += glob.glob('%s/darks/WF*/*.fits' % dir)
-    files += glob.glob('%s/skyflats/WF*/*.fits' % dir)
+    files = glob.glob('%s/[0-9]*/*/*.fits' % dir)
+    files += glob.glob('%s/darks/*/*.fits' % dir)
+    files += glob.glob('%s/skyflats/*/*.fits' % dir)
     files.sort()
 
     res = fram.query('select filename from images where night=%s', (night,), simplify=False)
@@ -52,6 +53,9 @@ def process_dir(dir):
         try:
             header = pyfits.getheader(filename)
             image = pyfits.getdata(filename)
+
+            if header['NAXIS1'] == 4148 and header['NAXIS2'] == 4124:
+                image = image[12:-16,32:-20] # Manually adjusted overscan-free region
 
             header.remove('HISTORY', remove_all=True, ignore_missing=True)
             header.remove('COMMENT', remove_all=True, ignore_missing=True)
@@ -110,7 +114,7 @@ if nthreads > 0:
     pool = multiprocessing.Pool(nthreads)
     # Make wrapper function to pass our arguments inside worker processes
     fn = partial(process_dir)
-    pool.map(fn, dirs)
+    pool.map(fn, dirs, 1)
 
     pool.close()
     pool.join()

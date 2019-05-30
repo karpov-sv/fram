@@ -44,7 +44,7 @@ def blind_match_objects(obj, order=4, extra=""):
                    pyfits.Column(name='FLUX', format='1D', array=obj['flux'])]
         tbhdu = pyfits.BinTableHDU.from_columns(columns)
         filename = posixpath.join(dir, 'list.fits')
-        tbhdu.writeto(filename, clobber=True)
+        tbhdu.writeto(filename, overwrite=True)
         extra += " --x-column XIMAGE --y-column YIMAGE --sort-column FLUX --width %d --height %d" % (np.ceil(max(obj['x']+1)), np.ceil(max(obj['y']+1)))
 
         wcsname = posixpath.split(filename)[-1]
@@ -68,6 +68,21 @@ def blind_match_objects(obj, order=4, extra=""):
 
     return wcs
 
+def radectoxyz(ra_deg, dec_deg):
+    ra  = np.deg2rad(ra_deg)
+    dec = np.deg2rad(dec_deg)
+    xyz = np.array((np.cos(dec)*np.cos(ra),
+                    np.cos(dec)*np.sin(ra),
+                    np.sin(dec)))
+
+    return xyz
+
+def xyztoradec(xyz):
+    ra = np.arctan2(xyz[1], xyz[0])
+    ra += 2*np.pi * (ra < 0)
+    dec = np.arcsin(xyz[2] / np.linalg.norm(xyz, axis=0))
+
+    return (np.rad2deg(ra), np.rad2deg(dec))
 
 def make_series(mul=1.0, x=1.0, y=1.0, order=1, sum=False, legendre=False, zero=True):
     if zero:
@@ -187,6 +202,8 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     mag = -2.5*np.log10(flux)
     magerr = 2.5*np.log10(1.0 + fluxerr/flux)
 
+    fwhm = 2.0*np.sqrt(np.hypot(obj0['a'][idx], obj0['b'][idx])*np.log(2))
+
     # Quality cuts
     fidx = (flux > 0) & (magerr < 0.1)
 
@@ -201,4 +218,101 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     if verbose:
         print "All done"
 
-    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx]}
+    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx]}
+
+def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, use_fwhm=False, verbose=True):
+    if r0 > 0.0:
+        kernel = make_kernel(r0)
+    else:
+        kernel = None
+
+    if verbose:
+        print "Preparing background mask"
+
+    mask_bg = np.zeros_like(mask)
+    mask_segm = np.zeros_like(mask)
+
+    if False:
+        # Simple heuristics to mask regions with rapidly varying background
+
+        for _ in xrange(3):
+            bg1 = sep.Background(image, mask=mask|mask_bg, bw=256, bh=256)
+            bg2 = sep.Background(image, mask=mask|mask_bg, bw=32, bh=32)
+
+            ibg = bg2.back() - bg1.back()
+
+            tmp = np.abs(ibg - np.median(ibg)) > 5.0*1.4*mad(ibg)
+            mask_bg |= cv2.dilate(tmp.astype(np.uint8), np.ones([100,100])).astype(np.bool)
+
+    if verbose:
+        print "Building background map"
+
+    bg = sep.Background(image, mask=mask|mask_bg, bw=64, bh=64)
+    image1 = image - bg.back()
+
+    sep.set_extract_pixstack(image.shape[0]*image.shape[1])
+
+    if False:
+        # Mask regions around huge objects as they are most probably corrupted by saturation and blooming
+        if verbose:
+            print "Extracting initial objects"
+
+        obj0,segm = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg, filter_kernel=kernel, segmentation_map=True)
+
+        if verbose:
+            print "Dilating large objects"
+
+        mask_segm = np.isin(segm, [_+1 for _,npix in enumerate(obj0['npix']) if npix > 100])
+        mask_segm = cv2.dilate(mask_segm.astype(np.uint8), np.ones([10,10])).astype(np.bool)
+
+    if verbose:
+        print "Extracting final objects"
+
+    obj0 = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg|mask_segm, filter_kernel=kernel)
+
+    if use_fwhm:
+        # Estimate FHWM and use it to get optimal aperture size
+        fwhm = 2.0*np.sqrt(np.hypot(obj0['a'], obj0['b'])*np.log(2))
+        fwhm = np.median(fwhm)
+
+        aper = 1.5*fwhm
+
+        if verbose:
+            print "FWHM = %.2g, aperture = %.2g" % (fwhm, aper)
+
+    wcs = WCS(header)
+    xwin,ywin = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
+
+    # Filter out objects too close to frame edges
+    idx = (np.round(xwin) > edge) & (np.round(ywin) > edge) & (np.round(xwin) < image.shape[1]-edge) & (np.round(ywin) < image.shape[0]-edge)
+
+    if verbose:
+        print "Measuring final objects"
+
+    flux,fluxerr,flag = sep.sum_circle(image1, xwin[idx], ywin[idx], aper, err=bg.rms(), gain=gain, mask=mask|mask_bg|mask_segm, bkgann=bkgann)
+    # For debug purposes, let's make also the same aperture photometry on the background map
+    bgflux,bgfluxerr,bgflag = sep.sum_circle(bg.back(), xwin[idx], ywin[idx], aper, err=bg.rms(), gain=gain, mask=mask|mask_bg|mask_segm)
+
+    bgnorm = bgflux/np.pi/aper**2
+
+    fwhm = 2.0*np.sqrt(np.hypot(obj['a'], obj['b'])*np.log(2))
+
+    # Fluxes to magnitudes
+    mag = -2.5*np.log10(flux)
+    magerr = 2.5*np.log10(1.0 + fluxerr/flux)
+
+    # Quality cuts
+    fidx = (flux > 0) & (magerr < 0.1)
+
+    if header:
+        # If header is provided, we may build WCS from it and convert x,y to ra,dec
+        wcs = pywcs.WCS(header)
+        ra,dec = wcs.all_pix2world(obj0['x'][idx], obj0['y'][idx], 0)
+    else:
+        #ra,dec = None,None
+        ra,dec = np.zeros_like(obj0['x'][idx]),np.zeros_like(obj0['y'][idx])
+
+    if verbose:
+        print "All done"
+
+    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx]}

@@ -27,8 +27,12 @@ def colorbar(obj=None, ax=None, size="5%", pad=0.1):
         plt.sca(ax)
 
 def imshow(image, qq=[0.5,97.5], show_colorbar=True, **kwargs):
-    vmin,vmax = np.percentile(image[np.isfinite(image)], qq)
-    plt.imshow(image, vmin=vmin, vmax=vmax, **kwargs)
+    vmin1,vmax1 = np.percentile(image[np.isfinite(image)], qq)
+    if not kwargs.has_key('vmin'):
+        kwargs['vmin'] = vmin1
+    if not kwargs.has_key('vmax'):
+        kwargs['vmax'] = vmax1
+    plt.imshow(image, **kwargs)
     if show_colorbar:
         colorbar()
 
