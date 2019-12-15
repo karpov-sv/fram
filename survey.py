@@ -122,7 +122,7 @@ def mad(arr):
     med = np.median(arr)
     return np.median(np.abs(arr - med))
 
-def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, use_fwhm=False, verbose=True):
+def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=3.0, use_fwhm=False, verbose=True):
     if r0 > 0.0:
         kernel = make_kernel(r0)
     else:
@@ -170,11 +170,12 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     if verbose:
         print "Extracting final objects"
 
-    obj0 = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg|mask_segm, filter_kernel=kernel)
+    obj0 = sep.extract(image1, err=bg.rms(), thresh=4, minarea=minarea, mask=mask|mask_bg|mask_segm, filter_kernel=kernel)
 
     if use_fwhm:
         # Estimate FHWM and use it to get optimal aperture size
         fwhm = 2.0*np.sqrt(np.hypot(obj0['a'], obj0['b'])*np.log(2))
+        fwhm = sep.flux_radius(image1, obj0['x'], obj0['y'], relfluxradius*fwhm*np.ones_like(obj0['x']), 0.5, mask=mask)[0]
         fwhm = np.median(fwhm)
 
         aper = 1.5*fwhm
@@ -189,6 +190,9 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     # Filter out objects too close to frame edges
     idx = (np.round(xwin) > edge) & (np.round(ywin) > edge) & (np.round(xwin) < image.shape[1]-edge) & (np.round(ywin) < image.shape[0]-edge)
 
+    if minnthresh:
+        idx &= (obj0['tnpix'] >= minnthresh)
+
     if verbose:
         print "Measuring final objects"
 
@@ -202,7 +206,9 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     mag = -2.5*np.log10(flux)
     magerr = 2.5*np.log10(1.0 + fluxerr/flux)
 
-    fwhm = 2.0*np.sqrt(np.hypot(obj0['a'][idx], obj0['b'][idx])*np.log(2))
+    # better FWHM estimation
+    # fwhm = 2.0*np.sqrt(np.hypot(obj0['a'][idx], obj0['b'][idx])*np.log(2))
+    fwhm = sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.5, mask=mask)[0]
 
     # Quality cuts
     fidx = (flux > 0) & (magerr < 0.1)
