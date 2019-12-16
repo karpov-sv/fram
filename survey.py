@@ -131,6 +131,9 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     if verbose:
         print "Preparing background mask"
 
+    if mask is None:
+        mask = np.zeros_like(image, dtype=np.bool)
+
     mask_bg = np.zeros_like(mask)
     mask_segm = np.zeros_like(mask)
 
