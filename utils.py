@@ -2,10 +2,9 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-plt.rc('image', interpolation='nearest', origin='lower', cmap = 'hot')
-rcParams = plt.rcParams.copy()
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.stats import binned_statistic_2d
 
 def colorbar(obj=None, ax=None, size="5%", pad=0.1):
     should_restore = False
@@ -43,3 +42,16 @@ def breakpoint():
     except:
         import pdb
         pdb.set_trace()
+
+def binned_map(x, y, value, bins=16, statistic='mean', qq=[0.5, 97.5], show_colorbar=True, show_dots=False):
+    gmag0, xe, ye, binnumbers = binned_statistic_2d(x, y, value, bins=bins, statistic=statistic)
+
+    limits = np.percentile(gmag0[np.isfinite(gmag0)], qq)
+
+    plt.imshow(gmag0.T, origin='lower', extent=[xe[0], xe[-1], ye[0], ye[-1]], interpolation='nearest', vmin=limits[0], vmax=limits[1], aspect='auto')
+    if show_colorbar:
+        plt.colorbar()
+
+    if show_dots:
+        plt.autoscale(False)
+        plt.plot(x, y, 'b.', alpha=0.3)
