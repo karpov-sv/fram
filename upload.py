@@ -18,20 +18,14 @@ from skimage.measure import block_reduce
 
 import survey
 
+from calibrate import crop_overscans
+
 from fram import Fram
 #fram = Fram()
 
 nthreads = 8
 
-dirs = glob.glob('/mnt/data0/auger/*/*')
-dirs += glob.glob('/mnt/data0/cta-s0/2*/*')
-dirs += glob.glob('/mnt/data0/cta-n/2*/*')
-
-dirs.sort(reverse=True)
-
-print len(dirs), "dirs"
-
-def process_dir(dir):
+def process_dir(dir, dbname='fram'):
     fram = Fram()
 
     night = posixpath.split(dir)[-1]
@@ -50,12 +44,15 @@ def process_dir(dir):
     for j,filename in enumerate(files):
         if filename in filenames:
             continue
+        if 'focusing' in filename:
+            continue
+        if 'bad' in filename:
+            continue
         try:
             header = pyfits.getheader(filename)
             image = pyfits.getdata(filename)
 
-            if header['NAXIS1'] == 4148 and header['NAXIS2'] == 4124:
-                image = image[12:-16,32:-20] # Manually adjusted overscan-free region
+            image,header = crop_overscans(image, header, subtract=False)
 
             header.remove('HISTORY', remove_all=True, ignore_missing=True)
             header.remove('COMMENT', remove_all=True, ignore_missing=True)
@@ -77,8 +74,16 @@ def process_dir(dir):
             target = header['TARGET']
 
             ccd = header['CCD_NAME']
+            product_id = header['product_id']
             filter = header.get('FILTER', 'unknown')
             time = datetime.datetime.strptime(header['DATE-OBS'], '%Y-%m-%dT%H:%M:%S.%f')
+
+            site = None
+            # Simple heuristics to derive the site name
+            for _ in ['auger', 'cta-n', 'cta-s0', 'cta-s1']:
+                if _ in filename:
+                    site = _
+                    break
 
             exposure = header['EXPOSURE']
 
@@ -87,9 +92,9 @@ def process_dir(dir):
 
             keywords = dict(header)
 
-            fram.query('INSERT INTO images (filename,night,time,target,type,filter,ccd,ra,dec,radius,exposure,width,height,mean,median,keywords) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (filename) DO NOTHING', (filename,night,time,target,type,filter,ccd,ra0,dec0,radius,exposure,header['NAXIS1'],header['NAXIS2'],mean,median,keywords))
+            fram.query('INSERT INTO images (filename,night,time,target,type,filter,ccd,product_id,site,ra,dec,radius,exposure,width,height,mean,median,keywords) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (filename) DO NOTHING', (filename,night,time,target,type,filter,ccd,product_id,site,ra0,dec0,radius,exposure,header['NAXIS1'],header['NAXIS2'],mean,median,keywords))
 
-            sys.stdout.write('\r  %d / %d - %s - %s %s %s %s' % (j, len(files), filename, night, ccd, type, filter))
+            sys.stdout.write('\r  %d / %d - %s - %s %s %s %s %s' % (j, len(files), filename, night, ccd, site, type, filter))
             sys.stdout.flush()
 
         except KeyboardInterrupt:
@@ -97,6 +102,7 @@ def process_dir(dir):
 
         except:
             import traceback
+            print "Exception while processing", dir, filename
             traceback.print_exc()
             pass
 
@@ -106,18 +112,39 @@ def process_dir(dir):
         print
 
 
+if __name__ == '__main__':
+    from optparse import OptionParser
 
-if nthreads > 0:
-    import multiprocessing
-    from functools import partial
+    parser = OptionParser(usage="usage: %prog [options] arg")
+    parser.add_option('-n', '--nthreads', help='Number of threads to use', action='store', dest='nthreads', type='int', default=1)
+    parser.add_option('-d', '--db', help='Database name', action='store', dest='db', type='str', default='fram')
 
-    pool = multiprocessing.Pool(nthreads)
-    # Make wrapper function to pass our arguments inside worker processes
-    fn = partial(process_dir)
-    pool.map(fn, dirs, 1)
+    (options,args) = parser.parse_args()
 
-    pool.close()
-    pool.join()
-else:
-    for dirname in dirs:
-        process_dir(dirname)
+    dirs = args
+
+    if not dirs:
+        dirs = glob.glob('/mnt/data0/auger/2*/*')
+        dirs += glob.glob('/mnt/data0/cta-n/2*/*')
+        dirs += glob.glob('/mnt/data2/cta-s0/2*/*')
+        dirs += glob.glob('/mnt/data2/cta-s1/2*/*')
+
+    dirs.sort(reverse=True)
+
+    print len(dirs), "dirs"
+
+    if options.nthreads > 1:
+        import multiprocessing
+        from functools import partial
+
+        pool = multiprocessing.Pool(options.nthreads)
+        # Make wrapper function to pass our arguments inside worker processes
+        fn = partial(process_dir, dbname=options.db)
+        pool.map(fn, dirs, 1)
+
+        pool.close()
+        pool.join()
+
+    else:
+        for dirname in dirs:
+            process_dir(dirname)

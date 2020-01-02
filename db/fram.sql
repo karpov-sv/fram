@@ -4,13 +4,15 @@ CREATE EXTENSION q3c;
 DROP TABLE IF EXISTS images CASCADE;
 CREATE TABLE images (
        id SERIAL PRIMARY KEY,
-       filename TEXT,
+       filename TEXT UNIQUE,
        night TEXT,
        time TIMESTAMP,
        target INT,
        type TEXT,
        filter TEXT,
        ccd TEXT,
+       site TEXT,
+       product_id INT,
        ra FLOAT,
        dec FLOAT,
        radius FLOAT,
