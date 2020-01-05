@@ -73,7 +73,7 @@ def assert_is_staff(request):
         raise PermissionDenied
 
 def redirect_get(url_or_view, *args, **kwargs):
-    get_params = kwargs.pop('get')
+    get_params = kwargs.pop('get', None)
 
     response = redirect(url_or_view, *args, **kwargs)
     if get_params:

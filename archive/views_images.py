@@ -25,9 +25,7 @@ from .fram import calibrate
 from .fram import survey
 from .fram import utils
 
-def images_list(request):
-    context = {}
-
+def get_images(request):
     images = Images.objects.all()
 
     night = request.GET.get('night')
@@ -66,6 +64,13 @@ def images_list(request):
     if serial and serial != 'all':
         images = images.filter(serial=serial)
 
+    return images
+
+def images_list(request):
+    context = {}
+
+    images = get_images(request)
+
     if request.GET.get('ra') and request.GET.get('dec'):
         ra = float(request.GET.get('ra'))
         dec = float(request.GET.get('dec'))
@@ -74,35 +79,19 @@ def images_list(request):
         context['dec'] = dec
         context['sr'] = sr
 
-        if sr > 0:
-            # Images with centers within given search radius
-            images = images.extra(where=["q3c_radial_query(ra, dec, %s, %s, %s)"], params=(ra, dec, sr))
-        else:
-            # Images containing given point
-            images = images.extra(where=["q3c_radial_query(ra, dec, %s, %s, radius)"], params=(ra, dec))
+        # Images with centers within given search radius
+        images = images.extra(where=["q3c_radial_query(ra, dec, %s, %s, %s)"], params=(ra, dec, sr))
 
     # Possible values for fields
-    # if tname and tname != 'all':
-    #     types = Images.objects.distinct('type').values('type')
-    # else:
     types = images.distinct('type').values('type')
     context['types'] = types
 
-    # if site and site != 'all':
-    #     sites = Images.objects.distinct('site').values('site')
-    # else:
     sites = images.distinct('site').values('site')
     context['sites'] = sites
 
-    # if ccd and ccd != 'all':
-    #     ccds = Images.objects.distinct('ccd').values('ccd')
-    # else:
     ccds = images.distinct('ccd').values('ccd')
     context['ccds'] = ccds
 
-    # if fname and fname != 'all':
-    #     filters = Images.objects.distinct('filter').values('filter')
-    # else:
     filters = images.distinct('filter').values('filter')
     context['filters'] = filters
 
@@ -115,6 +104,44 @@ def images_list(request):
     context['images'] = images
 
     return TemplateResponse(request, 'images.html', context=context)
+
+def images_cutouts(request):
+    context = {}
+
+    images = get_images(request)
+
+    if request.GET.get('ra') and request.GET.get('dec'):
+        ra = float(request.GET.get('ra'))
+        dec = float(request.GET.get('dec'))
+        sr = float(request.GET.get('sr', 0))
+        context['ra'] = ra
+        context['dec'] = dec
+        context['sr'] = sr
+
+        # Images containing given point
+        images = images.extra(where=["q3c_radial_query(ra, dec, %s, %s, radius)"], params=(ra, dec))
+
+        # TODO: recheck using WCS
+
+    # Possible values for fields
+    sites = images.distinct('site').values('site')
+    context['sites'] = sites
+
+    ccds = images.distinct('ccd').values('ccd')
+    context['ccds'] = ccds
+
+    filters = images.distinct('filter').values('filter')
+    context['filters'] = filters
+
+    sort = request.GET.get('sort')
+    if sort:
+        images = images.order_by(*(sort.split(',')))
+    else:
+        images = images.order_by('-time')
+
+    context['images'] = images
+
+    return TemplateResponse(request, 'images_cutouts.html', context=context)
 
 def image_details(request, id=0):
     context = {}
@@ -136,7 +163,7 @@ def image_details(request, id=0):
 
     return TemplateResponse(request, 'image.html', context=context)
 
-def image_preview(request, id=0, size=0, interpolation='nearest'):
+def image_preview(request, id=0, size=0):
     image = Images.objects.get(id=id)
     filename = image.filename
     filename = posixpath.join(settings.BASE_DIR, filename)
@@ -148,11 +175,11 @@ def image_preview(request, id=0, size=0, interpolation='nearest'):
         data,header = calibrate.crop_overscans(data, header)
 
     if size:
-        data = rescale(data, 1.0*size/data.shape[1], mode='reflect', multichannel=False, anti_aliasing=True)
+        data = rescale(data, size/data.shape[1], mode='reflect', multichannel=False, anti_aliasing=True)
 
     figsize = (data.shape[1], data.shape[0])
 
-    fig = Figure(facecolor='white', dpi=72, figsize=(1.0*figsize[0]/72, 1.0*figsize[1]/72))
+    fig = Figure(facecolor='white', dpi=72, figsize=(figsize[0]/72, figsize[1]/72))
 
     limits = np.percentile(data, [0.5, 99.5])
     fig.figimage(data, vmin=limits[0], vmax=limits[1], origin='lower')
@@ -206,6 +233,43 @@ def image_fwhm(request, id=0):
     obj = survey.get_objects_sep(data, use_fwhm=True)
     utils.binned_map(obj['x'], obj['y'], obj['fwhm'], bins=16, statistic='median', ax=ax)
     ax.set_title(posixpath.split(filename)[-1] + ' ' + image.site + ' ' + image.ccd + ' ' + image.filter + ' ' + str(image.exposure))
+
+    canvas = FigureCanvas(fig)
+
+    response = HttpResponse(content_type='image/jpeg')
+    canvas.print_jpg(response)
+
+    return response
+
+def image_cutout(request, id=0, size=0):
+    image = Images.objects.get(id=id)
+    filename = image.filename
+    filename = posixpath.join(settings.BASE_DIR, filename)
+
+    data = fits.getdata(filename, -1)
+    header = fits.getheader(filename, -1)
+    data,header = calibrate.crop_overscans(data, header)
+
+    ra,dec,sr = float(request.GET.get('ra')), float(request.GET.get('dec')), float(request.GET.get('sr'))
+
+    wcs = WCS(header)
+    x0,y0 = wcs.all_world2pix(ra, dec, sr)
+    r0 = sr/np.hypot(wcs.pixel_scale_matrix[0,0], wcs.pixel_scale_matrix[0,1])
+
+    crop,cropheader = utils.crop_image(data, x0, y0, r0, header)
+
+    if size:
+        if size > crop.shape[1]:
+            crop = rescale(crop, size/crop.shape[1], mode='reflect', multichannel=False, anti_aliasing=False, order=0)
+        else:
+            crop = rescale(crop, size/crop.shape[1], mode='reflect', multichannel=False, anti_aliasing=True)
+
+    figsize = (crop.shape[1], crop.shape[0])
+
+    fig = Figure(facecolor='white', dpi=72, figsize=(figsize[0]/72, figsize[1]/72))
+
+    limits = np.percentile(crop, [0.5, 99.0])
+    fig.figimage(crop, vmin=limits[0], vmax=limits[1], origin='lower')
 
     canvas = FigureCanvas(fig)
 

@@ -5,45 +5,67 @@ from django.template.response import TemplateResponse
 from django.shortcuts import redirect
 
 import datetime, re
-from db import DB
-
-from resolve import resolve
 
 from .models import Images
 from .utils import permission_required_or_403, redirect_get
+
+# FRAM modules
+from .fram.resolve import resolve
 
 def index(request):
     context = {}
 
     return TemplateResponse(request, 'index.html', context=context)
 
-def search(request):
+def search(request, mode='images'):
     if request.method == 'POST':
         # Form submission handling
 
         params = {}
 
-        if request.POST.get('coords') and request.POST.get('sr'):
-            coords = request.POST.get('coords')
-            sr = request.POST.get('sr')
-            sr = float(sr) if sr else 1
-
-            name, ra, dec = resolve(coords)
-            print(name,ra,dec)
-
-            if name:
-                params['ra'] = ra
-                params['dec'] = dec
-                params['sr'] = sr
-
-        elif request.POST.get('coords'):
-            params['target'] = request.POST.get('coords')
-
-        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial']:
+        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target']:
             if request.POST.get(_) and request.POST.get(_) != 'all':
                 params[_] = request.POST.get(_)
 
-        return redirect_get('images',  get=params)
+        if mode == 'cutouts':
+            # Search cutouts only
+            coords = request.POST.get('coords')
+            sr = request.POST.get('sr')
+            name,ra,dec = resolve(coords)
+
+            if name:
+                params['name'] = name
+                params['ra'] = ra
+                params['dec'] = dec
+                params['sr'] = float(sr) if sr else 0.1
+            else:
+                # handle resolving errors
+                return redirect_get('search')
+
+            return redirect_get('images_cutouts',  get=params)
+
+        else:
+            # Search full images
+            if request.POST.get('coords') and request.POST.get('sr'):
+                coords = request.POST.get('coords')
+                sr = request.POST.get('sr')
+                sr = float(sr) if sr else 1
+
+                name, ra, dec = resolve(coords)
+                print(name,ra,dec)
+
+                if name:
+                    params['ra'] = ra
+                    params['dec'] = dec
+                    params['sr'] = sr
+                else:
+                    # handle resolving errors
+                    return redirect_get('search')
+
+            elif request.POST.get('coords'):
+                params['target'] = request.POST.get('coords')
+
+            return redirect_get('images',  get=params)
 
     # No form submitted, just render a search form
     context = {}

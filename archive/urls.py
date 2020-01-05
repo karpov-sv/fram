@@ -28,8 +28,14 @@ urlpatterns = [
     url(r'^images/(?P<id>\d+)/preview$', views_images.image_preview, {'size':128}, name='image_preview'),
     url(r'^images/(?P<id>\d+)/fwhm$', views_images.image_fwhm, name='image_fwhm'),
 
+    # Cutouts
+    url(r'^images/cutouts/?$', views_images.images_cutouts, name='images_cutouts'),
+    url(r'^images/(?P<id>\d+)/cutout$', views_images.image_cutout, name='image_cutout'),
+    url(r'^images/(?P<id>\d+)/cutout/preview$', views_images.image_cutout, {'size':300}, name='image_cutout_preview'),
+
     # Search
     url(r'^search/?$', views.search, name='search'),
+    url(r'^search/cutouts?$', views.search, {'mode':'cutouts'}, name='search_cutouts'),
 
     # Robots
     url(r'^robots.txt$', lambda r: HttpResponse("User-agent: *\nDisallow: /\n", content_type="text/plain")),

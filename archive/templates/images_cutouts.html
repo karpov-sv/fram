@@ -7,14 +7,8 @@
 
 {% block title_div %}
   <h1>
-  {{ images.count }} images
+    {{ request.GET.sr }}</b> deg around {{ request.GET.ra }} {{request.GET.dec }}: {{ images.count }} images
   </h1>
-
-  <p  class="mb-4">
-  {% if request.GET.sr %}
-    in <b>{{ request.GET.sr }}</b> deg around RA=<b>{{ request.GET.ra }}</b> Dec=<b>{{request.GET.dec }}</b>
-  {% endif %}
-  </p>
 
 {% endblock %}
 
@@ -31,11 +25,8 @@
       <th>Site</th>
       <th>CCD</th>
       <th>Filter</th>
-      <th>Type</th>
       <th>Exposure</th>
       <th>Target</th>
-      <th>RA</th>
-      <th>Dec</th>
       <th>Preview</th>
       <!-- <th></th> -->
     </tr>
@@ -58,22 +49,15 @@
           <td><a href="?{{ request.GET|GET_remove:"filter"|GET_append:text|GET_urlencode }}">{{ image.filter }}</a></td>
         {% endwith %}
 
-        {% with text="type="|addstr:image.type %}
-          <td><a href="?{{ request.GET|GET_remove:"type"|GET_append:text|GET_urlencode }}">{{ image.type }}</a></td>
-        {% endwith %}
-
         <td>{{ image.exposure }}</td>
 
         {% with text="target="|addstr:image.target %}
           <td><a href="?{{ request.GET|GET_remove:"target"|GET_append:text|GET_urlencode }}">{{ image.target }}</a></td>
         {% endwith %}
 
-        <td>{{ image.ra|floatformat:3 }}</td>
-        <td>{{ image.dec|floatformat:3 }}</td>
-        <td><a href="{% url 'image_details' image.id %}" title="View image details">
-          <img src="{% url 'image_preview' image.id %}" class="img-thumbnail">
+        <td><a href="{% url 'image_cutout' image.id %}?ra={{ request.GET.ra }}&dec={{ request.GET.dec }}&sr={{ request.GET.sr }}" title="View image">
+          <img src="{% url 'image_cutout_preview' image.id %}?ra={{ request.GET.ra }}&dec={{ request.GET.dec }}&sr={{ request.GET.sr }}" class="img-thumbnail">
         </a></td>
-        <!-- <td><a href="{% url 'image_download' image.id %}" title="Download FITS"><i class="fa fa-download"></i> </a></td> -->
       </tr>
     {% endfor %}
   </table>

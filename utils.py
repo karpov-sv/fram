@@ -59,3 +59,47 @@ def binned_map(x, y, value, bins=16, statistic='mean', qq=[0.5, 97.5], show_colo
     if show_dots:
         ax.set_autoscale(False)
         ax.plot(x, y, 'b.', alpha=0.3)
+
+def padded_slice(img, sl):
+    '''https://stackoverflow.com/a/51001929'''
+    output_shape = np.asarray(np.shape(img))
+    output_shape[0] = sl[1] - sl[0]
+    output_shape[1] = sl[3] - sl[2]
+    src = [max(sl[0], 0),
+           min(sl[1], img.shape[0]),
+           max(sl[2], 0),
+           min(sl[3], img.shape[1])]
+    dst = [src[0] - sl[0], src[1] - sl[0],
+           src[2] - sl[2], src[3] - sl[2]]
+    output = np.zeros(output_shape, dtype=img.dtype)
+    output[dst[0]:dst[1],dst[2]:dst[3]] = img[src[0]:src[1],src[2]:src[3]]
+    return output
+
+def crop_image(data, x0, y0, r0, header=None):
+    x1,x2 = int(np.floor(x0 - r0)), int(np.ceil(x0 + r0))
+    y1,y2 = int(np.floor(y0 - r0)), int(np.ceil(y0 + r0))
+
+    src = [min(max(y1, 0), data.shape[0]),
+        max(min(y2, data.shape[0]), 0),
+        min(max(x1, 0), data.shape[1]),
+        max(min(x2, data.shape[1]), 0)]
+
+    dst = [src[0] - y1, src[1] - y1, src[2] - x1, src[3] - x1]
+
+    sub = np.zeros((y2-y1, x2-x1), data.dtype)
+    sub.fill(np.nan)
+    sub[dst[0]:dst[1], dst[2]:dst[3]] = data[src[0]:src[1], src[2]:src[3]]
+
+    if header is not None:
+        subheader = header.copy()
+        subheader['CRPIX1'] -= x1
+        subheader['CRPIX2'] -= y1
+
+        subheader['CROP_X1'] = x1
+        subheader['CROP_X2'] = x2
+        subheader['CROP_Y1'] = y1
+        subheader['CROP_Y2'] = y2
+
+        return sub, subheader
+    else:
+        return sub
