@@ -21,9 +21,9 @@ from .utils import permission_required_or_403
 from . import settings
 
 # FRAM modules
-import calibrate
-import survey
-import utils
+from .fram import calibrate
+from .fram import survey
+from .fram import utils
 
 def images_list(request):
     context = {}
