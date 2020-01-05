@@ -1,0 +1,176 @@
+<!-- Bootbox -->
+
+<script src="{{ STATIC_URL }}/web/bootbox.min.js"></script>
+<script src="{{ STATIC_URL }}/web/URI.js"></script>
+<script src="{{ STATIC_URL }}/web/moment.min.js"></script>
+
+<script language="javascript">
+
+ popupImage = function(event, url, title, ok)
+ {
+   // Fix for Safari CMD-click handled by onclick()
+   if(event.metaKey)
+     return true;
+
+   var body = $("<div/>", {class: ""});
+
+   $("<img/>", {class:"img img-responsive center-block", src:url}).appendTo(body);
+
+   params = {
+     title: title,
+     message: body,
+     onEscape: function() {},
+   };
+
+   if(ok){
+     params.buttons = {
+       success: {
+         label: "Ok",
+         className: "btn-default",
+         callback: function() {}
+       }
+     };
+   }
+
+   bootbox.dialog(params);
+
+   return false;
+ }
+
+ popupStatusImage = function(event, url, title)
+ {
+   // Fix for Safari CMD-click handled by onclick()
+   if(event.metaKey)
+     return true;
+
+   var body = $("<div/>", {class: ""});
+
+   var image = $("<img/>", {class:"img img-responsive center-block", src:url}).appendTo(body);
+   var uri = image.uri();
+   var query = uri.query(true);
+
+   if(!query['hours']){
+     query['hours'] = 24.0;
+   }
+
+   if(!query['time0']){
+     // Default is now - 0.5*hours
+     m = moment.utc().subtract(0.5*query['hours']*3600, 'seconds');
+     query['time0'] = m.format('YYYY-MM-DD HH:mm:ss');
+   }
+
+   var m = moment(query['time0'], 'YYYY-MM-DD HH:mm:ss');
+
+   var orig_time0 = query['time0'];
+   var orig_hours = query['hours'];
+
+   globalimage = image;
+
+   params = {
+     title: title,
+     message: body,
+     onEscape: function() {},
+   };
+
+   params.buttons = {
+     before: {
+       label: " << ",
+       className: "btn-default",
+       callback: function() {
+         m.subtract(0.25*query['hours']*3600, 'seconds');
+         query['time0'] = m.format('YYYY-MM-DD HH:mm:ss');
+         uri.setQuery(query);
+         return false;}
+     },
+     before1: {
+       label: " < ",
+       className: "btn-default",
+       callback: function() {
+         m.subtract(0.05*query['hours']*3600, 'seconds');
+         query['time0'] = m.format('YYYY-MM-DD HH:mm:ss');
+         uri.setQuery(query);
+         return false;}
+     },
+     zoomin: {
+       label: "Zoom In",
+       className: "btn-default",
+       callback: function() {
+         query['hours'] /= 2;
+         uri.setQuery(query);
+         return false;}
+     },
+     zoomout: {
+       label: "Zoom Out",
+       className: "btn-default",
+       callback: function() {
+         query['hours'] *= 2;
+         uri.setQuery(query);
+         return false}
+     },
+     after1: {
+       label: " > ",
+       className: "btn-default",
+       callback: function() {
+         m.add(0.05*query['hours']*3600, 'seconds');
+         query['time0'] = m.format('YYYY-MM-DD HH:mm:ss');
+         uri.setQuery(query);
+         return false;}
+     },
+     after: {
+       label: " >> ",
+       className: "btn-default",
+       callback: function() {
+         m.add(0.25*query['hours']*3600, 'seconds');
+         query['time0'] = m.format('YYYY-MM-DD HH:mm:ss');
+         uri.setQuery(query);
+         return false;}
+     },
+     reset: {
+       label: "Reset",
+       className: "btn-default",
+       callback: function() {
+         query['time0'] = orig_time0;
+         query['hours'] = orig_hours;
+         m = moment(query['time0'], 'YYYY-MM-DD HH:mm:ss');
+         uri.setQuery(query);
+         return false;}
+     },
+     success: {
+       label: "Ok",
+       className: "btn-default",
+       callback: function() {}
+     }
+   };
+
+   bootbox.dialog(params);
+
+   return false;
+ }
+
+ popupThis = function(event)
+ {
+   var element = $(event.target);
+   var url = element.attr('src') || element.attr('href'); // IMG or A
+
+   var title = element.attr('title') || element.attr('alt') || " ";
+
+   return popupImage(event, url, title, true);
+ }
+
+ popupStatusImageThis = function(event)
+ {
+   var element = $(event.target);
+   var url = element.attr('src') || element.attr('href'); // IMG or A
+
+   var title = element.attr('title') || element.attr('alt') || "Interactive Status Plot";
+
+   return popupStatusImage(event, url, title);
+ }
+
+</script>
+
+<style>
+ .modal-dialog {width: 850px; margin: 0 auto;}
+ .modal-body {padding: 0; margin: 0;}
+ .modal-footer {margin: 0;}
+</style>
