@@ -15,12 +15,12 @@
     <span> - </span>
     <a href="{% url 'image_full' image.id %}?raw=1" title="Click for a raw image"><i class="fa fa-file-image-o"></i> Raw image</a>
     <span> - </span>
-    <a href="{% url 'image_full' image.id %}" title="Click to download original file"><i class="fa fa-download"></i> Download FITS</a>
+    <a href="{% url 'image_download' image.id %}" title="Click to download original file"><i class="fa fa-download"></i> Download FITS</a>
   </div>
 
 <table class="table table-sm table-striped">
   <tr><td>Id:</td><td colspan=2>{{image.id}}</td></tr>
-  <tr><td>Filename:</td><td colspan=2><a href="/images/{{ image.id }}/download" title="Download FITS"><span class="glyphicon glyphicon-floppy-disk"></span> {{ image.filename }}</a></td></tr>
+  <tr><td>Filename:</td><td colspan=2><a href="{% url 'image_download' image.id %}" title="Download FITS"><span class="glyphicon glyphicon-floppy-disk"></span> {{ image.filename }}</a></td></tr>
 
   <tr><td>Time:</td><td colspan=2>{{image.time|date:"Y-m-d H:i:s"}} UT</td></tr>
 
