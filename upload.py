@@ -74,7 +74,7 @@ def process_dir(dir, dbname='fram'):
             target = header['TARGET']
 
             ccd = header['CCD_NAME']
-            product_id = header['product_id']
+            serial = header['product_id']
             filter = header.get('FILTER', 'unknown')
             time = datetime.datetime.strptime(header['DATE-OBS'], '%Y-%m-%dT%H:%M:%S.%f')
 
@@ -92,7 +92,7 @@ def process_dir(dir, dbname='fram'):
 
             keywords = dict(header)
 
-            fram.query('INSERT INTO images (filename,night,time,target,type,filter,ccd,product_id,site,ra,dec,radius,exposure,width,height,mean,median,keywords) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (filename) DO NOTHING', (filename,night,time,target,type,filter,ccd,product_id,site,ra0,dec0,radius,exposure,header['NAXIS1'],header['NAXIS2'],mean,median,keywords))
+            fram.query('INSERT INTO images (filename,night,time,target,type,filter,ccd,serial,site,ra,dec,radius,exposure,width,height,mean,median,keywords) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (filename) DO NOTHING', (filename,night,time,target,type,filter,ccd,serial,site,ra0,dec0,radius,exposure,header['NAXIS1'],header['NAXIS2'],mean,median,keywords))
 
             sys.stdout.write('\r  %d / %d - %s - %s %s %s %s %s' % (j, len(files), filename, night, ccd, site, type, filter))
             sys.stdout.flush()
