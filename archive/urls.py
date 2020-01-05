@@ -26,6 +26,7 @@ urlpatterns = [
     url(r'^images/(?P<id>\d+)/full$', views_images.image_preview, name='image_full'),
     url(r'^images/(?P<id>\d+)/view$', views_images.image_preview, {'size':800}, name='image_view'),
     url(r'^images/(?P<id>\d+)/preview$', views_images.image_preview, {'size':128}, name='image_preview'),
+    url(r'^images/(?P<id>\d+)/fwhm$', views_images.image_fwhm, name='image_fwhm'),
 
     # Search
     url(r'^search/?$', views.search, name='search'),

@@ -19,7 +19,11 @@ from astropy.wcs import WCS
 from .models import Images
 from .utils import permission_required_or_403
 from . import settings
+
+# FRAM modules
 import calibrate
+import survey
+import utils
 
 def images_list(request):
     context = {}
@@ -151,7 +155,7 @@ def image_preview(request, id=0, size=0, interpolation='nearest'):
     fig = Figure(facecolor='white', dpi=72, figsize=(1.0*figsize[0]/72, 1.0*figsize[1]/72))
 
     limits = np.percentile(data, [0.5, 99.5])
-    fig.figimage(data, vmin=limits[0], vmax=limits[1])
+    fig.figimage(data, vmin=limits[0], vmax=limits[1], origin='lower')
 
     canvas = FigureCanvas(fig)
 
@@ -185,3 +189,27 @@ def images_nights(request):
     context['sites'] = sites
 
     return TemplateResponse(request, 'nights.html', context=context)
+
+def image_fwhm(request, id=0):
+    image = Images.objects.get(id=id)
+    filename = image.filename
+    filename = posixpath.join(settings.BASE_DIR, filename)
+
+    data = fits.getdata(filename, -1)
+    header = fits.getheader(filename, -1)
+
+    data,header = calibrate.crop_overscans(data, header)
+
+    fig = Figure(facecolor='white', dpi=72, figsize=(14,12))
+    ax = fig.add_subplot(111)
+
+    obj = survey.get_objects_sep(data, use_fwhm=True)
+    utils.binned_map(obj['x'], obj['y'], obj['fwhm'], bins=16, statistic='median', ax=ax)
+    ax.set_title(posixpath.split(filename)[-1] + ' ' + image.site + ' ' + image.ccd + ' ' + image.filter + ' ' + str(image.exposure))
+
+    canvas = FigureCanvas(fig)
+
+    response = HttpResponse(content_type='image/jpeg')
+    canvas.print_jpg(response)
+
+    return response

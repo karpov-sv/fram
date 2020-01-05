@@ -16,6 +16,8 @@
     <a href="{% url 'image_full' image.id %}?raw=1" title="Click for a raw image"><i class="fa fa-file-image-o"></i> Raw image</a>
     <span> - </span>
     <a href="{% url 'image_download' image.id %}" title="Click to download original file"><i class="fa fa-download"></i> Download FITS</a>
+    <span> - </span>
+    <a href="{% url 'image_fwhm' image.id %}" title="Click to inspect image FWHM"><i class="fa fa-bullseye"></i> FWHM</a>
   </div>
 
 <table class="table table-sm table-striped">
