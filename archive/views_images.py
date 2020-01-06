@@ -241,7 +241,7 @@ def image_fwhm(request, id=0):
 
     return response
 
-def image_cutout(request, id=0, size=0):
+def image_cutout(request, id=0, size=0, mode='view'):
     image = Images.objects.get(id=id)
     filename = image.filename
     filename = posixpath.join(settings.BASE_DIR, filename)
@@ -257,6 +257,15 @@ def image_cutout(request, id=0, size=0):
     r0 = sr/np.hypot(wcs.pixel_scale_matrix[0,0], wcs.pixel_scale_matrix[0,1])
 
     crop,cropheader = utils.crop_image(data, x0, y0, r0, header)
+
+    if mode == 'download':
+        s = StringIO()
+        fits.writeto(s, crop, cropheader)
+
+        response = HttpResponse(s.getvalue(), content_type='application/octet-stream')
+        response['Content-Disposition'] = 'attachment; filename=crop_'+os.path.split(filename)[-1]
+        response['Content-Length'] = len(s.getvalue())
+        return response
 
     if size:
         if size > crop.shape[1]:

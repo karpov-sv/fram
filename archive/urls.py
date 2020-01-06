@@ -32,6 +32,7 @@ urlpatterns = [
     url(r'^images/cutouts/?$', views_images.images_cutouts, name='images_cutouts'),
     url(r'^images/(?P<id>\d+)/cutout$', views_images.image_cutout, name='image_cutout'),
     url(r'^images/(?P<id>\d+)/cutout/preview$', views_images.image_cutout, {'size':300}, name='image_cutout_preview'),
+    url(r'^images/(?P<id>\d+)/cutout/download$', views_images.image_cutout, {'mode':'download'}, name='image_cutout_download'),
 
     # Search
     url(r'^search/?$', views.search, name='search'),

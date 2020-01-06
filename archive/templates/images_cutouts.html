@@ -16,7 +16,7 @@
 
 {% include 'images_filter.html' %}
 
-{% paginate 10 images %}
+{% paginate 20 images %}
   <table class="table table-striped table-sm">
     <tr>
       <th>Id</th>
@@ -28,7 +28,7 @@
       <th>Exposure</th>
       <th>Target</th>
       <th>Preview</th>
-      <!-- <th></th> -->
+      <th></th>
     </tr>
     {% for image in images %}
       <tr>
@@ -58,6 +58,9 @@
         <td><a href="{% url 'image_cutout' image.id %}?ra={{ request.GET.ra }}&dec={{ request.GET.dec }}&sr={{ request.GET.sr }}" title="View image">
           <img src="{% url 'image_cutout_preview' image.id %}?ra={{ request.GET.ra }}&dec={{ request.GET.dec }}&sr={{ request.GET.sr }}" class="img-thumbnail">
         </a></td>
+
+        <td><a href="{% url 'image_cutout_download' image.id %}?ra={{ request.GET.ra }}&dec={{ request.GET.dec }}&sr={{ request.GET.sr }}" title="Download FITS"><i class="fa fa-download"></i> </a></td>
+
       </tr>
     {% endfor %}
   </table>
