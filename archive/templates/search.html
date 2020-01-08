@@ -218,6 +218,15 @@
 
     </div>
 
+    <!-- Max distance -->
+    <div class="input-group col-sm">
+      <div class="input-group-prepend">
+        <span class="input-group-text" id="addon-target">Max Dist:</span>
+      </div>
+
+      <input type="text" class="form-control" id="maxdist" name="maxdist" placeholder="Distance from frame center, degrees" size=20 aria-label="MaxDist" aria-describedby="addon-maxdist">
+    </div>
+
     <!-- Buttons -->
     <div class="input-group col-sm">
       <button type="submit" class="btn btn-secondary">Search</button>
@@ -226,7 +235,8 @@
   </div>
 
   <div class="form-text text-muted">
-    It will return cutouts of all object images containing the specified sky point, with the size defined by the search radius.
+    It will return cutouts of all object images containing the specified sky point, with the size defined by the search radius.<br>
+    <i>Max Dist</i> parameter defines the maximal acceptable distance from frame center, and may be useful to skip the images where cutout center is in the frame corners where distortions are significant.
   </div>
 </form>
 

@@ -7,7 +7,7 @@
 
 {% block title_div %}
   <h1>
-    {{ request.GET.sr }}</b> deg around {{ request.GET.ra }} {{request.GET.dec }}: {{ images.count }} images
+    {{ request.GET.sr }}</b> deg around {{ request.GET.ra }} {{request.GET.dec }}: {{ images|qs_length}} images
   </h1>
 
 {% endblock %}
@@ -16,9 +16,15 @@
 
 <div class="pull-right">
   {% if request.GET.singlepage %}
-    <a href="?{{ request.GET|GET_remove:"singlepage"|GET_urlencode }}">Multi-page</a>
+    <a href="?{{ request.GET|GET_remove:"singlepage"|GET_urlencode }}" title="Show pagination">Multi-page</a>
   {% else %}
-    <a href="?{{ request.GET|GET_append:"singlepage"|GET_urlencode }}">Single-page</a>
+    <a href="?{{ request.GET|GET_append:"singlepage"|GET_urlencode }}" title="Show all images on single page">Single-page</a>
+  {% endif %}
+  -
+  {% if request.GET.exact %}
+    <a href="?{{ request.GET|GET_remove:"exact"|GET_urlencode }}" title="No recheck for point being inside the frame">Fast</a>
+  {% else %}
+    <a href="?{{ request.GET|GET_append:"exact"|GET_urlencode }}" title="Exact WCS-based check for whether the point is inside frame">Exact</a>
   {% endif %}
 
 </div>
@@ -38,6 +44,7 @@
       <th>Filter</th>
       <th>Exposure</th>
       <th>Target</th>
+      <th>Dist</th>
       <th>Preview</th>
       <th></th>
     </tr>
@@ -65,6 +72,8 @@
         {% with text="target="|addstr:image.target %}
           <td><a href="?{{ request.GET|GET_remove:"target"|GET_append:text|GET_urlencode }}">{{ image.target }}</a></td>
         {% endwith %}
+
+        <td title="Distance from frame center">{{ image.dist|floatformat:2 }}</td>
 
         <td><a href="{% url 'image_cutout' image.id %}?ra={{ request.GET.ra }}&dec={{ request.GET.dec }}&sr={{ request.GET.sr }}" title="View image">
           <img src="{% url 'image_cutout_preview' image.id %}?ra={{ request.GET.ra }}&dec={{ request.GET.dec }}&sr={{ request.GET.sr }}" class="img-thumbnail">

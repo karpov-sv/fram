@@ -23,7 +23,7 @@ def search(request, mode='images'):
 
         params = {}
 
-        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target']:
+        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist']:
             if request.POST.get(_) and request.POST.get(_) != 'all':
                 params[_] = request.POST.get(_)
 

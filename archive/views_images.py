@@ -105,23 +105,39 @@ def images_list(request):
 
     return TemplateResponse(request, 'images.html', context=context)
 
+wcs_keywords = ['NAXIS1', 'NAXIS2', 'WCSAXES', 'CRPIX1', 'CRPIX2', 'CD1_1', 'CD2_1', 'CD1_2', 'CD2_2', 'PC1_1', 'PC1_2', 'PC2_1', 'PC2_2', 'CDELT1', 'CDELT2', 'CUNIT1', 'CUNIT2', 'CTYPE1', 'CTYPE2', 'CRVAL1', 'CRVAL2', 'LONPOLE', 'LATPOLE', 'RADESYS', 'EQUINOX', 'DATE-OBS', 'BP_0_0', 'BP_0_1', 'A_3_1', 'A_3_0', 'BP_0_4', 'BP_0_2', 'B_3_0', 'B_3_1', 'BP_1_2', 'BP_3_1', 'BP_3_0', 'BP_1_1', 'B_1_2', 'B_1_3', 'B_1_1', 'B_2_1', 'B_2_0', 'BP_2_1', 'B_2_2', 'BP_1_3', 'B_ORDER', 'A_ORDER', 'B_0_4', 'B_0_3', 'B_0_2', 'BP_0_3', 'A_4_0', 'BP_ORDER', 'AP_4_0', 'B_4_0', 'BP_4_0', 'AP_ORDER', 'BP_2_2', 'AP_3_0', 'AP_3_1', 'A_1_1', 'BP_2_0', 'A_1_3', 'A_1_2', 'A_0_4', 'AP_2_2', 'AP_2_1', 'AP_2_0', 'A_0_2', 'A_0_3', 'A_2_2', 'BP_1_0', 'A_2_0', 'A_2_1', 'AP_1_0', 'AP_1_1', 'AP_1_2', 'AP_1_3', 'AP_0_4', 'AP_0_1', 'AP_0_0', 'AP_0_3', 'AP_0_2']
+
+def check_pos(image, ra, dec, edge=10):
+    header = {_:image.keywords[_] for _ in image.keywords.keys() if _ in wcs_keywords}
+    wcs = WCS(header)
+
+    x,y = wcs.all_world2pix(ra, dec, 0)
+
+    if x > edge and x < header['NAXIS1']-edge and y > edge and y < header['NAXIS2']-edge:
+        return True
+    else:
+        return False
+
 def images_cutouts(request):
     context = {}
 
     images = get_images(request)
 
-    if request.GET.get('ra') and request.GET.get('dec'):
-        ra = float(request.GET.get('ra'))
-        dec = float(request.GET.get('dec'))
-        sr = float(request.GET.get('sr', 0))
-        context['ra'] = ra
-        context['dec'] = dec
-        context['sr'] = sr
+    ra = float(request.GET.get('ra', 0))
+    dec = float(request.GET.get('dec', 0))
+    sr = float(request.GET.get('sr', 0.1))
+    maxdist = float(request.GET.get('maxdist', 0.0))
+    context['ra'] = ra
+    context['dec'] = dec
+    context['sr'] = sr
+    context['maxdist'] = maxdist
 
-        # Images containing given point
-        images = images.extra(where=["q3c_radial_query(ra, dec, %s, %s, radius)"], params=(ra, dec))
+    # Images containing given point
+    images = images.extra(where=["q3c_radial_query(ra, dec, %s, %s, radius)"], params=(ra, dec))
+    images = images.extra(select={'dist': "q3c_dist(ra, dec, %s, %s)"}, select_params=(ra,dec))
 
-        # TODO: recheck using WCS
+    if maxdist > 0:
+        images = images.extra(where=["q3c_dist(ra, dec, %s, %s) < %s"], params=(ra, dec, maxdist))
 
     # Possible values for fields
     sites = images.distinct('site').values('site')
@@ -138,6 +154,12 @@ def images_cutouts(request):
         images = images.order_by(*(sort.split(',')))
     else:
         images = images.order_by('-time')
+
+    if request.GET.get('exact') and request.GET.get('exact') != '0':
+        # Exact WCS-based recheck whether the position is inside the frame
+        # FIXME: extremely SLOW!
+        images = [_ for _ in images if check_pos(_, ra, dec)]
+        print(len(images))
 
     context['images'] = images
 
@@ -277,8 +299,10 @@ def image_cutout(request, id=0, size=0, mode='view'):
 
     fig = Figure(facecolor='white', dpi=72, figsize=(figsize[0]/72, figsize[1]/72))
 
-    limits = np.percentile(crop, [0.5, 99.0])
-    fig.figimage(crop, vmin=limits[0], vmax=limits[1], origin='lower')
+    if np.any(np.isfinite(crop)):
+        limits = np.percentile(crop[np.isfinite(crop)], [0.5, 99.0])
+
+        fig.figimage(crop, vmin=limits[0], vmax=limits[1], origin='lower')
 
     canvas = FigureCanvas(fig)
 

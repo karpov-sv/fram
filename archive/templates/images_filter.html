@@ -111,4 +111,16 @@
     </span>
   {% endif %}
 
+  {% if request.GET.maxdist %}
+    <span>
+      <nav class="mr-2">
+        <ul class="pagination pagination-sm justify-content-center">
+          <li class="page-item disabled"><span class="page-link">Max Dist:</span></li>
+          <li class="page-item active"><span class="page-link">{{ request.GET.maxdist }}</span></li>
+          <li class="page-item"><a class="page-link" href="?{{ request.GET|GET_remove:"maxdist"|GET_urlencode }}"><i class="fa fa-close"></i></a></li>
+        </ul>
+      </nav>
+    </span>
+  {% endif %}
+
 </div>

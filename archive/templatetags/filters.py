@@ -15,6 +15,13 @@ from archive import settings
 register = template.Library()
 
 @register.filter
+def qs_length(value):
+    if type(value) == list:
+        return len(value)
+    else:
+        return value.count()
+
+@register.filter
 def addstr(value, arg):
     return str(value) + str(arg)
 
