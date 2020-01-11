@@ -72,7 +72,7 @@ def crop_overscans(image, header=None, subtract=True):
     else:
         x1,x2,y1,y2 = parse_det(header.get('DATASEC'))
 
-        if header is not None or header.get('CRPIX1') is not None:
+        if header is not None and header.get('CRPIX1') is not None:
             header['CRPIX1'] -= x1
             header['CRPIX2'] -= y1
 
