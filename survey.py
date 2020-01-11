@@ -1,8 +1,10 @@
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import numpy as np
 import posixpath, glob, datetime, os, sys, tempfile, shutil
 
-from astropy import wcs as pywcs
-from astropy.io import fits as pyfits
+from astropy.wcs import WCS
+from astropy.io import fits
 
 from esutil import coords
 
@@ -11,10 +13,10 @@ import sep,cv2
 def get_frame_center(filename=None, header=None, wcs=None, width=None, height=None):
     if not wcs:
         if header:
-            wcs = pywcs.WCS(header=header)
+            wcs = WCS(header=header)
         elif filename:
-            header = pyfits.getheader(filename, -1)
-            wcs = pywcs.WCS(header=header)
+            header = fits.getheader(filename, -1)
+            wcs = WCS(header=header)
 
     if (not width or not height) and header:
         width = header['NAXIS1']
@@ -39,10 +41,10 @@ def blind_match_objects(obj, order=4, extra=""):
             break
 
     if binname:
-        columns = [pyfits.Column(name='XIMAGE', format='1D', array=obj['x']+1),
-                   pyfits.Column(name='YIMAGE', format='1D', array=obj['y']+1),
-                   pyfits.Column(name='FLUX', format='1D', array=obj['flux'])]
-        tbhdu = pyfits.BinTableHDU.from_columns(columns)
+        columns = [fits.Column(name='XIMAGE', format='1D', array=obj['x']+1),
+                   fits.Column(name='YIMAGE', format='1D', array=obj['y']+1),
+                   fits.Column(name='FLUX', format='1D', array=obj['flux'])]
+        tbhdu = fits.BinTableHDU.from_columns(columns)
         filename = posixpath.join(dir, 'list.fits')
         tbhdu.writeto(filename, overwrite=True)
         extra += " --x-column XIMAGE --y-column YIMAGE --sort-column FLUX --width %d --height %d" % (np.ceil(max(obj['x']+1)), np.ceil(max(obj['y']+1)))
@@ -51,17 +53,22 @@ def blind_match_objects(obj, order=4, extra=""):
         tmpname = posixpath.join(dir, posixpath.splitext(wcsname)[0] + '.tmp')
         wcsname = posixpath.join(dir, posixpath.splitext(wcsname)[0] + '.wcs')
 
-        os.system("%s -D %s --no-verify --overwrite --no-fits2fits --no-plots --use-sextractor -t %d %s %s 2>/dev/null >/dev/null" % (binname, dir, order, extra, filename))
+        os.system("%s -D %s --no-verify --overwrite --no-plots -T %s %s" % (binname, dir, extra, filename))
+
+        if order:
+            order_str = "-t %d" % order
+        else:
+            order_str = "-T"
 
         if os.path.isfile(wcsname):
             shutil.move(wcsname, tmpname)
-            os.system("%s -D %s --overwrite --no-fits2fits --no-plots -t %d %s --verify %s %s 2>/dev/null >/dev/null" % (binname, dir, order, extra, tmpname, filename))
+            os.system("%s -D %s --overwrite --no-plots %s %s --verify %s %s" % (binname, dir, order_str, extra, tmpname, filename))
 
             if os.path.isfile(wcsname):
-                header = pyfits.getheader(wcsname)
-                wcs = pywcs.WCS(header)
+                header = fits.getheader(wcsname)
+                wcs = WCS(header)
     else:
-        print "Astrometry.Net binary not found"
+        print("Astrometry.Net binary not found")
 
     #print order
     shutil.rmtree(dir)
@@ -129,7 +136,7 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
         kernel = None
 
     if verbose:
-        print "Preparing background mask"
+        print("Preparing background mask")
 
     if mask is None:
         mask = np.zeros_like(image, dtype=np.bool)
@@ -150,7 +157,7 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
             mask_bg |= cv2.dilate(tmp.astype(np.uint8), np.ones([100,100])).astype(np.bool)
 
     if verbose:
-        print "Building background map"
+        print("Building background map")
 
     bg = sep.Background(image, mask=mask|mask_bg, bw=64, bh=64)
     image1 = image - bg.back()
@@ -160,18 +167,18 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     if False:
         # Mask regions around huge objects as they are most probably corrupted by saturation and blooming
         if verbose:
-            print "Extracting initial objects"
+            print("Extracting initial objects")
 
         obj0,segm = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg, filter_kernel=kernel, segmentation_map=True)
 
         if verbose:
-            print "Dilating large objects"
+            print("Dilating large objects")
 
         mask_segm = np.isin(segm, [_+1 for _,npix in enumerate(obj0['npix']) if npix > 100])
         mask_segm = cv2.dilate(mask_segm.astype(np.uint8), np.ones([10,10])).astype(np.bool)
 
     if verbose:
-        print "Extracting final objects"
+        print("Extracting final objects")
 
     obj0 = sep.extract(image1, err=bg.rms(), thresh=4, minarea=minarea, mask=mask|mask_bg|mask_segm, filter_kernel=kernel)
 
@@ -184,7 +191,7 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
         aper = 1.5*fwhm
 
         if verbose:
-            print "FWHM = %.2g, aperture = %.2g" % (fwhm, aper)
+            print("FWHM = %.2g, aperture = %.2g" % (fwhm, aper))
 
     # Windowed positional parameters are often biased in crowded fields, let's avoid them for now
     # xwin,ywin,flag = sep.winpos(image1, obj0['x'], obj0['y'], 2.0, mask=mask)
@@ -197,7 +204,7 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
         idx &= (obj0['tnpix'] >= minnthresh)
 
     if verbose:
-        print "Measuring final objects"
+        print("Measuring final objects")
 
     flux,fluxerr,flag = sep.sum_circle(image1, xwin[idx], ywin[idx], aper, err=bg.rms(), gain=gain, mask=mask|mask_bg|mask_segm, bkgann=bkgann)
     # For debug purposes, let's make also the same aperture photometry on the background map
@@ -212,22 +219,24 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     # better FWHM estimation
     # fwhm = 2.0*np.sqrt(np.hypot(obj0['a'][idx], obj0['b'][idx])*np.log(2))
     fwhm = sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.5, mask=mask)[0]
+    fwhm75 = sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.75, mask=mask)[0]
+    fwhm90 = sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.9, mask=mask)[0]
 
     # Quality cuts
     fidx = (flux > 0) & (magerr < 0.1)
 
     if header:
         # If header is provided, we may build WCS from it and convert x,y to ra,dec
-        wcs = pywcs.WCS(header)
+        wcs = WCS(header)
         ra,dec = wcs.all_pix2world(obj0['x'][idx], obj0['y'][idx], 0)
     else:
         #ra,dec = None,None
         ra,dec = np.zeros_like(obj0['x'][idx]),np.zeros_like(obj0['y'][idx])
 
     if verbose:
-        print "All done"
+        print("All done")
 
-    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx]}
+    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx]}
 
 def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, use_fwhm=False, verbose=True):
     if r0 > 0.0:
@@ -236,7 +245,7 @@ def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=No
         kernel = None
 
     if verbose:
-        print "Preparing background mask"
+        print("Preparing background mask")
 
     mask_bg = np.zeros_like(mask)
     mask_segm = np.zeros_like(mask)
@@ -254,7 +263,7 @@ def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=No
             mask_bg |= cv2.dilate(tmp.astype(np.uint8), np.ones([100,100])).astype(np.bool)
 
     if verbose:
-        print "Building background map"
+        print("Building background map")
 
     bg = sep.Background(image, mask=mask|mask_bg, bw=64, bh=64)
     image1 = image - bg.back()
@@ -264,18 +273,18 @@ def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=No
     if False:
         # Mask regions around huge objects as they are most probably corrupted by saturation and blooming
         if verbose:
-            print "Extracting initial objects"
+            print("Extracting initial objects")
 
         obj0,segm = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg, filter_kernel=kernel, segmentation_map=True)
 
         if verbose:
-            print "Dilating large objects"
+            print("Dilating large objects")
 
         mask_segm = np.isin(segm, [_+1 for _,npix in enumerate(obj0['npix']) if npix > 100])
         mask_segm = cv2.dilate(mask_segm.astype(np.uint8), np.ones([10,10])).astype(np.bool)
 
     if verbose:
-        print "Extracting final objects"
+        print("Extracting final objects")
 
     obj0 = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg|mask_segm, filter_kernel=kernel)
 
@@ -287,7 +296,7 @@ def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=No
         aper = 1.5*fwhm
 
         if verbose:
-            print "FWHM = %.2g, aperture = %.2g" % (fwhm, aper)
+            print("FWHM = %.2g, aperture = %.2g" % (fwhm, aper))
 
     wcs = WCS(header)
     xwin,ywin = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
@@ -296,7 +305,7 @@ def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=No
     idx = (np.round(xwin) > edge) & (np.round(ywin) > edge) & (np.round(xwin) < image.shape[1]-edge) & (np.round(ywin) < image.shape[0]-edge)
 
     if verbose:
-        print "Measuring final objects"
+        print("Measuring final objects")
 
     flux,fluxerr,flag = sep.sum_circle(image1, xwin[idx], ywin[idx], aper, err=bg.rms(), gain=gain, mask=mask|mask_bg|mask_segm, bkgann=bkgann)
     # For debug purposes, let's make also the same aperture photometry on the background map
@@ -315,13 +324,13 @@ def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=No
 
     if header:
         # If header is provided, we may build WCS from it and convert x,y to ra,dec
-        wcs = pywcs.WCS(header)
+        wcs = WCS(header)
         ra,dec = wcs.all_pix2world(obj0['x'][idx], obj0['y'][idx], 0)
     else:
         #ra,dec = None,None
         ra,dec = np.zeros_like(obj0['x'][idx]),np.zeros_like(obj0['y'][idx])
 
     if verbose:
-        print "All done"
+        print("All done")
 
     return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx]}

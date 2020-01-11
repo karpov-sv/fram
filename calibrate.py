@@ -1,8 +1,6 @@
-import numpy as np
-import posixpath, glob, datetime, os, sys
+from __future__ import absolute_import, division, print_function, unicode_literals
 
-from astropy import wcs as pywcs
-from astropy.io import fits as pyfits
+import numpy as np
 
 from scipy.stats import sigmaclip
 
@@ -20,62 +18,72 @@ def parse_det(string):
 
 # Cropping of overscans if any
 def crop_overscans(image, header=None, subtract=True):
+    if header is not None:
+        header = header.copy()
+
     if subtract:
         # Subtract bias region
         bias = None
 
         if image.shape == (4124, 4148): # Initial patched G4 firmware
-            bias = rmean(list(image[2:8,300:-300].flatten()) + list(image[-14:,300:-300].flatten()))
+            bias = rmean(list(image[2:8, 300:-300].flatten()) + list(image[-14:, 300:-300].flatten()))
 
         elif image.shape == (4127,4144): # Official firmwares after enabling overscans in Windows utility
-            bias = rmean(list(image[3:7,300:-300].flatten()) + list(image[-17:-2,300:-300].flatten()))
+            bias = rmean(list(image[3:7, 300:-300].flatten()) + list(image[-17:-2, 300:-300].flatten()))
 
         elif image.shape == (1026, 1062): # Overscan-enabled custom G2 on La Palma
-            bias = rmean(list(image[:,-5:]))
+            bias = rmean(list(image[:, -5:]))
 
-        if bias:
+        if bias is not None:
             image = image.copy() - bias
 
-            if header:
+            if header is not None:
                 header['BIASAVG'] = bias
 
-    if not header or not header.get('DATASEC'):
+    if header is None or not header.get('DATASEC'):
         # Special handling of legacy G4 data - manually adjusted overscan-free regions
         if image.shape == (4124, 4148): # Initial patched G4 firmware
-            image = np.ascontiguousarray(image[11:-17,33:-19])
+            image = image[11:-17, 33:-19]
 
-            if header and header.get('CRPIX1') is not None:
+            if header is not None and header.get('CRPIX1') is not None:
                 header['CRPIX1'] -= 33
                 header['CRPIX2'] -= 11
+            if header is not None:
+                header['DATASEC'] = '[34:4129,12:4107]'
 
         elif image.shape == (4127,4144): # Official firmwares after enabling overscans in Windows utility
-            image = np.ascontiguousarray(image[11:-20,30:-18])
+            image = image[11:-20, 30:-18]
 
-            if header and header.get('CRPIX1') is not None:
+            if header is not None and header.get('CRPIX1') is not None:
                 header['CRPIX1'] -= 30
                 header['CRPIX2'] -= 11
+            if header is not None:
+                header['DATASEC'] = '[31:4126,12:4107]'
 
         elif image.shape == (1026, 1062): # Overscan-enabled custom G2 on La Palma
-            image = np.ascontiguousarray(image[2:,0:1056])
+            image = image[2:, 0:1056]
 
-            if header and header.get('CRPIX1') is not None:
+            if header is not None and header.get('CRPIX1') is not None:
                 header['CRPIX1'] -= 0
                 header['CRPIX2'] -= 2
+            if header is not None:
+                header['DATASEC'] = '[1:1056,3:1026]'
 
-        if header:
-            return image,header
-        else:
-            return image
+    else:
+        x1,x2,y1,y2 = parse_det(header.get('DATASEC'))
 
-    x1,x2,y1,y2 = parse_det(header.get('DATASEC'))
+        if header is not None or header.get('CRPIX1') is not None:
+            header['CRPIX1'] -= x1
+            header['CRPIX2'] -= y1
 
-    if header.get('CRPIX1') is not None:
-        header['CRPIX1'] -= x1
-        header['CRPIX2'] -= y1
+        image = image[y1:y2+1, x1:x2+1]
 
-    image = np.ascontiguousarray(image[y1:y2+1, x1:x2+1])
+    image = np.ascontiguousarray(image)
 
-    if header:
+    if header is not None:
+        header['NAXIS1'] = image.shape[1]
+        header['NAXIS2'] = image.shape[0]
+
         return image,header
     else:
         return image
@@ -86,7 +94,7 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
 
     if dark is not None:
         if dark.shape != image.shape:
-            print "Wrong dark shape:", dark.shape, "vs", image.shape
+            print("Wrong dark shape:", dark.shape, "vs", image.shape)
         else:
             image = 1.0*image - dark
 
@@ -94,7 +102,7 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
         serial = header['product_id']
 
         if serial == 6029:
-            if header['date'] < '2019-07-12':
+            if header['DATE'] < '2019-07-12':
                 # Darkroom / 06029 - FRAM WF7
                 param1, param2 = [ 0.07290866, 0.81854223, 0.1754477 ,-0.55883105], 3.173551818062375
             else:
@@ -116,7 +124,7 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
             # Darkroom / 06167 - BART SBT
             param1, param2 = [ 0.10854498, 0.67574182, 0.02173521,-0.08850012], 2.6305813378315057
         elif serial == 6204:
-            if header['date'] < '2019-11-30':
+            if header['DATE'] < '2019-11-30':
                 # Darkroom / 06204 - FRAM WF8
                 param1, param2 = [ 0.05861087, 0.82682591, 0.04755189,-0.09645298], 2.0240170211992154
             else:
@@ -131,9 +139,10 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
             param1, param2 = [-0.00908378, 1.01761044, 0, 0], 0
 
         else:
-            print "Unsupported chip", serial
+            print("Unsupported chip", serial)
             param1, param2 = [0, 1, 0, 0], 0
 
+        # Keep linearization parmeters in the header
         header = header.copy()
         for _ in [0,1,2,3]:
             header['PARAM1_%d' % _] = param1[_]

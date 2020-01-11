@@ -1,42 +1,48 @@
 #!/usr/bin/env python
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import numpy as np
 import posixpath, glob, datetime, os, sys
 
-from astropy import wcs as pywcs
-from astropy.io import fits as pyfits
+from astropy.wcs import WCS
+from astropy.io import fits
 
-from scipy.spatial import cKDTree
+import warnings
+from astropy.wcs import FITSFixedWarning
+warnings.simplefilter('ignore', FITSFixedWarning)
 
-from esutil import coords
 import sep, cv2
-from esutil import htm, coords
+from esutil import coords
 
 import statsmodels.api as sm
 from scipy.stats import binned_statistic_2d
 from skimage.measure import block_reduce
 
-import survey
-
 from calibrate import crop_overscans
 
 from fram import Fram
-#fram = Fram()
-
-nthreads = 8
 
 def process_dir(dir, dbname='fram'):
     fram = Fram()
 
+    site = None
+    # Simple heuristics to derive the site name
+    for _ in ['auger', 'cta-n', 'cta-s0', 'cta-s1']:
+        if _ in dir:
+            site = _
+            break
+
+    # Night
     night = posixpath.split(dir)[-1]
 
-    print night, '/', dir
+    print(night, '/', dir)
     files = glob.glob('%s/[0-9]*/*/*.fits' % dir)
     files += glob.glob('%s/darks/*/*.fits' % dir)
     files += glob.glob('%s/skyflats/*/*.fits' % dir)
     files.sort()
 
-    res = fram.query('select filename from images where night=%s', (night,), simplify=False)
+    res = fram.query('SELECT filename FROM images WHERE night=%s AND site=%s', (night,site), simplify=False)
     filenames = [_['filename'] for _ in res]
 
     j = 0
@@ -49,20 +55,24 @@ def process_dir(dir, dbname='fram'):
         if 'bad' in filename:
             continue
         try:
-            header = pyfits.getheader(filename)
-            image = pyfits.getdata(filename)
+            header = fits.getheader(filename)
+            image = fits.getdata(filename)
 
             image,header = crop_overscans(image, header, subtract=False)
 
+            # Clean up the header a bit
             header.remove('HISTORY', remove_all=True, ignore_missing=True)
             header.remove('COMMENT', remove_all=True, ignore_missing=True)
+            for _ in header.keys():
+                if _ and _[0] == '_':
+                    header.remove(_, remove_all=True, ignore_missing=True)
 
             type = header.get('IMAGETYP', 'unknown')
 
             if type == 'object':
                 ra0,dec0 = header['OBJRA'], header['OBJDEC']
 
-                wcs = pywcs.WCS(header)
+                wcs = WCS(header)
                 ra,dec = wcs.all_pix2world([0, header['NAXIS1'], 0.5*header['NAXIS1']], [0, header['NAXIS2'], 0.5*header['NAXIS2']], 0)
                 radius = 0.5*coords.sphdist(ra[0], dec[0], ra[1], dec[1])[0]
 
@@ -77,13 +87,6 @@ def process_dir(dir, dbname='fram'):
             serial = header['product_id']
             filter = header.get('FILTER', 'unknown')
             time = datetime.datetime.strptime(header['DATE-OBS'], '%Y-%m-%dT%H:%M:%S.%f')
-
-            site = None
-            # Simple heuristics to derive the site name
-            for _ in ['auger', 'cta-n', 'cta-s0', 'cta-s1']:
-                if _ in filename:
-                    site = _
-                    break
 
             exposure = header['EXPOSURE']
 
@@ -102,7 +105,7 @@ def process_dir(dir, dbname='fram'):
 
         except:
             import traceback
-            print "Exception while processing", dir, filename
+            print("Exception while processing", dir, filename)
             traceback.print_exc()
             pass
 
@@ -110,7 +113,6 @@ def process_dir(dir, dbname='fram'):
 
     if j:
         print
-
 
 if __name__ == '__main__':
     from optparse import OptionParser
@@ -131,7 +133,7 @@ if __name__ == '__main__':
 
     dirs.sort(reverse=True)
 
-    print len(dirs), "dirs"
+    print(len(dirs), "dirs")
 
     if options.nthreads > 1:
         import multiprocessing
