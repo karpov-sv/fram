@@ -10,13 +10,19 @@
 
 <h3>Image search</h3>
 
+{% if message %}
+  <div class="alert alert-warning" role="alert">
+    {{ message }}
+  </div>
+{% endif %}
+
 <form class="form mb-4" role="form" action="{% url 'search' %}" method="post">{% csrf_token %}
   <div class="form-group">
     <div class="input-group">
       <div class="input-group-prepend">
-        <span class="input-group-text" id="addon-coords">Target:</span>
+        <span class="input-group-text" id="addon-coords">Center:</span>
       </div>
-      <input type="text" class="form-control" id="coords" name="coords" placeholder="Coordinates or SIMBAD object name or target id" size=40 aria-label="Coordinates" aria-describedby="addon-coords">
+      <input type="text" class="form-control" id="coords" name="coords" placeholder="Coordinates or SIMBAD object name" size=40 aria-label="Coordinates" aria-describedby="addon-coords">
 
       <div class="input-group-append">
         <span class="input-group-text" id="addon-sr">Radius:</span>
@@ -89,6 +95,14 @@
           <option value="{{ type.type }}">{{ type.type }}</option>
         {% endfor %}
       </select>
+
+      <!-- Target -->
+      <div class="input-group-prepend">
+        <span class="input-group-text" id="addon-target">Target:</span>
+      </div>
+
+      <input type="text" class="form-control" id="target" name="target" placeholder="Target ID" size=20 aria-label="Target" aria-describedby="addon-target">
+
     </div>
   </div>
 
@@ -106,24 +120,38 @@
 
     </div>
 
-    <!-- Buttons -->
+    <!-- Filename -->
     <div class="input-group col-sm">
-      <button type="submit" class="btn btn-secondary">Search</button>
+      <div class="input-group-prepend">
+        <span class="input-group-text" id="addon-filename">Filename:</span>
+      </div>
+
+      <input type="text" class="form-control" id="filename" name="filename" placeholder="Part of image filename" size=20 aria-label="Filename" aria-describedby="addon-filename">
     </div>
 
   </div>
 
+  <!-- Buttons -->
+  <div class="input-group">
+    <button type="submit" class="btn btn-secondary">Search</button>
+  </div>
+
+
   <div class="form-text text-muted">
     It will search the database of all images - object frames, dark/flat calibrations etc.<br>
-    If the radius is specified, only images with the center inside this radius are returned.
-    If no radius is provided, the target should be a target id as specified in FITS header.
-    If no target is specified, all images are searched according to the various parameters.<br>
+    If the position and radius are specified, only images with their centers located within this distance from query position are returned.<br>
   </div>
 </form>
 
 <!-- Cutouts -->
 
 <h3>Image cutouts</h3>
+
+{% if message_cutout %}
+  <div class="alert alert-warning" role="alert">
+    {{ message_cutout }}
+  </div>
+{% endif %}
 
 <form class="form mb-4" role="form" action="{% url 'search_cutouts' %}" method="post">{% csrf_token %}
   <div class="form-group">
@@ -227,11 +255,11 @@
       <input type="text" class="form-control" id="maxdist" name="maxdist" placeholder="Distance from frame center, degrees" size=20 aria-label="MaxDist" aria-describedby="addon-maxdist">
     </div>
 
-    <!-- Buttons -->
-    <div class="input-group col-sm">
-      <button type="submit" class="btn btn-secondary">Search</button>
-    </div>
+  </div>
 
+  <!-- Buttons -->
+  <div class="input-group">
+    <button type="submit" class="btn btn-secondary">Search</button>
   </div>
 
   <div class="form-text text-muted">

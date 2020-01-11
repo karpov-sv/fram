@@ -20,12 +20,6 @@
   {% else %}
     <a href="?{{ request.GET|GET_append:"singlepage"|GET_urlencode }}" title="Show all images on single page">Single-page</a>
   {% endif %}
-  -
-  {% if request.GET.exact %}
-    <a href="?{{ request.GET|GET_remove:"exact"|GET_urlencode }}" title="No recheck for point being inside the frame">Fast</a>
-  {% else %}
-    <a href="?{{ request.GET|GET_append:"exact"|GET_urlencode }}" title="Exact WCS-based check for whether the point is inside frame">Exact</a>
-  {% endif %}
 
 </div>
 

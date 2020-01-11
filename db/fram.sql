@@ -10,19 +10,22 @@ CREATE TABLE images (
        target INT,
        type TEXT,
        filter TEXT,
+       exposure FLOAT,
        ccd TEXT,
        serial INT,
        site TEXT,
        ra FLOAT,
        dec FLOAT,
        radius FLOAT,
-       exposure FLOAT,
        width INT,
        height INT,
+       footprint POLYGON,
+       footprint10 POLYGON,
        mean FLOAT,
        median FLOAT,
        keywords JSONB
 );
+
 CREATE INDEX ON images(filename);
 CREATE INDEX ON images(night);
 CREATE INDEX ON images(time);

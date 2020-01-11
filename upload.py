@@ -52,11 +52,14 @@ def process_dir(dir, dbname='fram'):
             continue
         if 'focusing' in filename:
             continue
-        if 'bad' in filename:
-            continue
+        # if 'bad' in filename:
+        #     continue
         try:
             header = fits.getheader(filename)
             image = fits.getdata(filename)
+
+            # Original (uncropped) dimensions
+            width,height = header['NAXIS1'],header['NAXIS2']
 
             image,header = crop_overscans(image, header, subtract=False)
 
@@ -69,33 +72,40 @@ def process_dir(dir, dbname='fram'):
 
             type = header.get('IMAGETYP', 'unknown')
 
-            if type == 'object':
-                ra0,dec0 = header['OBJRA'], header['OBJDEC']
-
+            if type == 'object' and header.get('CTYPE1'):
                 wcs = WCS(header)
-                ra,dec = wcs.all_pix2world([0, header['NAXIS1'], 0.5*header['NAXIS1']], [0, header['NAXIS2'], 0.5*header['NAXIS2']], 0)
+                ra,dec = wcs.all_pix2world([0, image.shape[1], 0.5*image.shape[1]], [0, image.shape[0], 0.5*image.shape[0]], 0)
                 radius = 0.5*coords.sphdist(ra[0], dec[0], ra[1], dec[1])[0]
-
                 ra0,dec0 = ra[2],dec[2]
+
+                # Frame footprint
+                ra,dec = wcs.all_pix2world([0, 0, image.shape[1], image.shape[1]], [0, image.shape[0], image.shape[0], 0], 0)
+                footprint = "(" + ",".join(["(%g,%g)" % (_,__) for _,__ in zip(ra, dec)]) + ")"
+
+                # Frame footprint at +10 pixels from the edge
+                ra,dec = wcs.all_pix2world([10, 10, image.shape[1]-10, image.shape[1]-10], [10, image.shape[0]-10, image.shape[0]-10, 10], 0)
+                footprint10 = "(" + ",".join(["(%g,%g)" % (_,__) for _,__ in zip(ra, dec)]) + ")"
+
             else:
                 # Should we really discard WCS for non-object frames?
                 ra0,dec0,radius = 0,0,0
+                footprint,footprint10 = None,None
 
-            target = header['TARGET']
+            target = header.get('TARGET')
 
-            ccd = header['CCD_NAME']
-            serial = header['product_id']
+            ccd = header.get('CCD_NAME')
+            serial = header.get('product_id')
             filter = header.get('FILTER', 'unknown')
             time = datetime.datetime.strptime(header['DATE-OBS'], '%Y-%m-%dT%H:%M:%S.%f')
 
-            exposure = header['EXPOSURE']
+            exposure = header.get('EXPOSURE')
 
             mean = np.mean(image)
             median = np.median(image)
 
             keywords = dict(header)
 
-            fram.query('INSERT INTO images (filename,night,time,target,type,filter,ccd,serial,site,ra,dec,radius,exposure,width,height,mean,median,keywords) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (filename) DO NOTHING', (filename,night,time,target,type,filter,ccd,serial,site,ra0,dec0,radius,exposure,header['NAXIS1'],header['NAXIS2'],mean,median,keywords))
+            fram.query('INSERT INTO images (filename,night,time,target,type,filter,ccd,serial,site,ra,dec,radius,exposure,width,height,footprint,footprint10,mean,median,keywords) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (filename) DO NOTHING', (filename,night,time,target,type,filter,ccd,serial,site,ra0,dec0,radius,exposure,width,height,footprint,footprint10,mean,median,keywords))
 
             sys.stdout.write('\r  %d / %d - %s - %s %s %s %s %s' % (j, len(files), filename, night, ccd, site, type, filter))
             sys.stdout.flush()

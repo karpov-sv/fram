@@ -18,12 +18,14 @@ def index(request):
     return TemplateResponse(request, 'index.html', context=context)
 
 def search(request, mode='images'):
+    message,message_cutout = None,None
+
     if request.method == 'POST':
         # Form submission handling
 
         params = {}
 
-        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist']:
+        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist', 'filename']:
             if request.POST.get(_) and request.POST.get(_) != 'all':
                 params[_] = request.POST.get(_)
 
@@ -38,15 +40,16 @@ def search(request, mode='images'):
                 params['ra'] = ra
                 params['dec'] = dec
                 params['sr'] = float(sr) if sr else 0.1
-            else:
-                # handle resolving errors
-                return redirect_get('search')
 
-            return redirect_get('images_cutouts',  get=params)
+                return redirect_get('images_cutouts',  get=params)
+            else:
+                message_cutout = "Can't resolve the query position: " + coords
 
         else:
             # Search full images
-            if request.POST.get('coords') and request.POST.get('sr'):
+            if request.POST.get('coords') and not request.POST.get('sr'):
+                message = "No search radius specified"
+            elif request.POST.get('coords') and request.POST.get('sr'):
                 coords = request.POST.get('coords')
                 sr = request.POST.get('sr')
                 sr = float(sr) if sr else 1
@@ -58,17 +61,15 @@ def search(request, mode='images'):
                     params['ra'] = ra
                     params['dec'] = dec
                     params['sr'] = sr
+
+                    return redirect_get('images',  get=params)
                 else:
-                    # handle resolving errors
-                    return redirect_get('search')
-
-            elif request.POST.get('coords'):
-                params['target'] = request.POST.get('coords')
-
-            return redirect_get('images',  get=params)
+                    message = "Can't resolve the query center: " + coords
+            else:
+                return redirect_get('images',  get=params)
 
     # No form submitted, just render a search form
-    context = {}
+    context = {'message': message, 'message_cutout': message_cutout}
 
     # Possible values for fields
     types = Images.objects.distinct('type').values('type')

@@ -66,6 +66,14 @@ def get_images(request):
     if serial and serial != 'all':
         images = images.filter(serial=serial)
 
+    filename = request.GET.get('filename')
+    if filename:
+        if '%' in filename:
+            # Extended syntax
+            images = images.extra(where=["filename like %s"], params=(filename,))
+        else:
+            images = images.filter(filename__contains=filename)
+
     return images
 
 def images_list(request):
@@ -107,19 +115,6 @@ def images_list(request):
 
     return TemplateResponse(request, 'images.html', context=context)
 
-wcs_keywords = ['NAXIS1', 'NAXIS2', 'WCSAXES', 'CRPIX1', 'CRPIX2', 'CD1_1', 'CD2_1', 'CD1_2', 'CD2_2', 'PC1_1', 'PC1_2', 'PC2_1', 'PC2_2', 'CDELT1', 'CDELT2', 'CUNIT1', 'CUNIT2', 'CTYPE1', 'CTYPE2', 'CRVAL1', 'CRVAL2', 'LONPOLE', 'LATPOLE', 'RADESYS', 'EQUINOX', 'DATE-OBS', 'BP_0_0', 'BP_0_1', 'A_3_1', 'A_3_0', 'BP_0_4', 'BP_0_2', 'B_3_0', 'B_3_1', 'BP_1_2', 'BP_3_1', 'BP_3_0', 'BP_1_1', 'B_1_2', 'B_1_3', 'B_1_1', 'B_2_1', 'B_2_0', 'BP_2_1', 'B_2_2', 'BP_1_3', 'B_ORDER', 'A_ORDER', 'B_0_4', 'B_0_3', 'B_0_2', 'BP_0_3', 'A_4_0', 'BP_ORDER', 'AP_4_0', 'B_4_0', 'BP_4_0', 'AP_ORDER', 'BP_2_2', 'AP_3_0', 'AP_3_1', 'A_1_1', 'BP_2_0', 'A_1_3', 'A_1_2', 'A_0_4', 'AP_2_2', 'AP_2_1', 'AP_2_0', 'A_0_2', 'A_0_3', 'A_2_2', 'BP_1_0', 'A_2_0', 'A_2_1', 'AP_1_0', 'AP_1_1', 'AP_1_2', 'AP_1_3', 'AP_0_4', 'AP_0_1', 'AP_0_0', 'AP_0_3', 'AP_0_2']
-
-def check_pos(image, ra, dec, edge=10):
-    header = {_:image.keywords[_] for _ in image.keywords.keys() if _ in wcs_keywords}
-    wcs = WCS(header)
-
-    x,y = wcs.all_world2pix(ra, dec, 0)
-
-    if x > edge and x < header['NAXIS1']-edge and y > edge and y < header['NAXIS2']-edge:
-        return True
-    else:
-        return False
-
 def images_cutouts(request):
     context = {}
 
@@ -137,6 +132,7 @@ def images_cutouts(request):
     # Images containing given point
     images = images.extra(where=["q3c_radial_query(ra, dec, %s, %s, radius)"], params=(ra, dec))
     images = images.extra(select={'dist': "q3c_dist(ra, dec, %s, %s)"}, select_params=(ra,dec))
+    images = images.extra(where=["q3c_poly_query(%s, %s, footprint10)"], params=(ra, dec))
 
     if maxdist > 0:
         images = images.extra(where=["q3c_dist(ra, dec, %s, %s) < %s"], params=(ra, dec, maxdist))
@@ -156,12 +152,6 @@ def images_cutouts(request):
         images = images.order_by(*(sort.split(',')))
     else:
         images = images.order_by('-time')
-
-    if request.GET.get('exact') and request.GET.get('exact') != '0':
-        # Exact WCS-based recheck whether the position is inside the frame
-        # FIXME: extremely SLOW!
-        images = [_ for _ in images if check_pos(_, ra, dec)]
-        print(len(images))
 
     context['images'] = images
 
@@ -264,7 +254,6 @@ def image_fwhm(request, id=0):
     canvas.print_jpg(response)
 
     return response
-
 
 def image_wcs(request, id=0):
     image = Images.objects.get(id=id)
