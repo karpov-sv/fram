@@ -18,9 +18,11 @@
     <a href="{% url 'image_download' image.id %}" title="Click to download original file"><i class="fa fa-download"></i> Download FITS</a>
     <span> - </span>
     <a href="{% url 'image_fwhm' image.id %}" title="Click to inspect image FWHM"><i class="fa fa-bullseye"></i> FWHM</a>
+    <span> - </span>
+    <a href="{% url 'image_wcs' image.id %}" title="Click to inspect image WCS"><i class="fa fa-map-marker"></i> WCS</a>
   </div>
 
-<table class="table table-sm table-striped">
+<table class="table table-sm table-striped mb-4">
   <tr><td>Id:</td><td colspan=2>{{image.id}}</td></tr>
   <tr><td>Filename:</td><td colspan=2><a href="{% url 'image_download' image.id %}" title="Download FITS"><span class="glyphicon glyphicon-floppy-disk"></span> {{ image.filename }}</a></td></tr>
 

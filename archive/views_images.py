@@ -12,6 +12,7 @@ from matplotlib.figure import Figure
 import numpy as np
 from skimage.transform import rescale
 from StringIO import StringIO
+from esutil import htm
 
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -24,6 +25,7 @@ from . import settings
 from .fram import calibrate
 from .fram import survey
 from .fram import utils
+from .fram.fram import Fram
 
 def get_images(request):
     images = Images.objects.all()
@@ -254,7 +256,50 @@ def image_fwhm(request, id=0):
 
     obj = survey.get_objects_sep(data, use_fwhm=True)
     utils.binned_map(obj['x'], obj['y'], obj['fwhm'], bins=16, statistic='median', ax=ax)
-    ax.set_title(posixpath.split(filename)[-1] + ' ' + image.site + ' ' + image.ccd + ' ' + image.filter + ' ' + str(image.exposure))
+    ax.set_title('%s - %s %s %s %s - half flux radius mean %.2f median %.2f pix' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, str(image.exposure), np.mean(obj['fwhm']), np.median(obj['fwhm'])))
+
+    canvas = FigureCanvas(fig)
+
+    response = HttpResponse(content_type='image/jpeg')
+    canvas.print_jpg(response)
+
+    return response
+
+
+def image_wcs(request, id=0):
+    image = Images.objects.get(id=id)
+    filename = image.filename
+    filename = posixpath.join(settings.BASE_DIR, filename)
+
+    data = fits.getdata(filename, -1)
+    header = fits.getheader(filename, -1)
+
+    data,header = calibrate.crop_overscans(data, header)
+    wcs = WCS(header)
+
+    fig = Figure(facecolor='white', dpi=72, figsize=(14,12))
+    ax = fig.add_subplot(111)
+
+    # Detect objects
+    obj = survey.get_objects_sep(data, use_fwhm=True, verbose=False)
+    obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
+
+    # Get stars from catalogue
+    fram = Fram()
+    ra0,dec0,sr0 = survey.get_frame_center(header=header)
+    cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 5 and v < 12'])
+    x,y = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
+
+    # Match stars
+    h = htm.HTM(10)
+    m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], 50.0/3600, maxmatch=0)
+    oidx = m[0]
+    cidx = m[1]
+    dist = m[2]*3600
+
+    utils.binned_map(obj['x'][oidx], obj['y'][oidx], dist, show_dots=True, bins=16, statistic='median', ax=ax)
+
+    ax.set_title('%s - %s %s %s - displacement mean %.1f median %.1f arcsec' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, np.mean(dist), np.median(dist)))
 
     canvas = FigureCanvas(fig)
 
