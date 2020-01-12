@@ -7,13 +7,17 @@ from django.shortcuts import redirect
 import datetime, re
 
 from .models import Images
-from .utils import permission_required_or_403, redirect_get
+from .utils import permission_required_or_403, redirect_get, db_query
 
 # FRAM modules
 from .fram.resolve import resolve
 
 def index(request):
     context = {}
+
+    sites = db_query('select site,count(*),(select night from images where site=i.site order by time desc limit 1) as last, (select night from images where site=i.site order by time asc limit 1) as first from images i group by i.site order by i.site;', (), simplify=False)
+
+    context['sites'] = sites
 
     return TemplateResponse(request, 'index.html', context=context)
 

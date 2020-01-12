@@ -6,4 +6,22 @@
 
 {% block content %}
 
+  <div class="list-group">
+    {% for site in sites %}
+      <div class="list-group-item">
+        <h4>{{ site.site }}</h4>
+        <span class="mr-4">
+          First Night: <b><a href="{% url 'images' %}?site={{ site.site }}&night={{ site.first }}">{{ site.first }}</a></b>
+        </span>
+        <span class="mr-4">
+          Last: <b><a href="{% url 'images' %}?site={{ site.site }}&night={{ site.last }}">{{ site.last }}</a></b>
+        </span>
+        <span class="mr-4">
+          Images: <b><a href="{% url 'images' %}?site={{ site.site }}">{{ site.count }}</a></b>
+        </span>
+
+      </div>
+    {% endfor %}
+  </div>
+
 {% endblock %}

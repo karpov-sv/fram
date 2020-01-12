@@ -9,7 +9,7 @@ import urllib
 from django.contrib.auth.decorators import permission_required, user_passes_test, PermissionDenied
 
 #@transaction.commit_on_success
-def db_query(string, params, db='archive', debug=False, simplify=True):
+def db_query(string, params, db='fram', debug=False, simplify=True):
     connection = connections[db]
 
     cursor = connection.cursor()
@@ -21,7 +21,8 @@ def db_query(string, params, db='archive', debug=False, simplify=True):
     try:
         cursor.execute(string, params)
         try:
-            result = cursor.fetchall()
+            columns = [col[0] for col in cursor.description]
+            result = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
             if simplify and len(result) == 1:
                 if len(result[0]) == 1:
