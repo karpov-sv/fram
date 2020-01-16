@@ -17,7 +17,7 @@ from esutil import htm
 from astropy.io import fits
 from astropy.wcs import WCS
 
-from .models import Images
+from .models import Images, Calibrations
 from .utils import permission_required_or_403
 from . import settings
 
@@ -25,7 +25,25 @@ from . import settings
 from .fram import calibrate
 from .fram import survey
 from .fram import utils
-from .fram.fram import Fram
+from .fram.fram import Fram, parse_iso_time, get_night
+
+# TODO: memoize the result
+def find_calibration_image(image, type='masterdark', night=None, site=None, ccd=None, serial=None, exposure=None, cropped_width=None, cropped_height=None, filter=None, binning=None):
+    calibs = Calibrations.objects.order_by('-night')
+
+    calibs = calibs.filter(night__lte=image.night)
+    calibs = calibs.filter(site=image.site)
+    calibs = calibs.filter(ccd=image.ccd)
+    calibs = calibs.filter(serial=image.serial)
+    calibs = calibs.filter(exposure=image.exposure)
+    calibs = calibs.filter(cropped_width=image.keywords['NAXIS1'])
+    calibs = calibs.filter(cropped_width=image.keywords['NAXIS1'])
+    calibs = calibs.filter(binning=image.binning)
+
+    if type in ['masterflat']:
+        calibs = calibs.filter(filter=filter)
+
+    return calibs.first()
 
 def get_images(request):
     images = Images.objects.all()
@@ -163,6 +181,13 @@ def image_details(request, id=0):
     image = Images.objects.get(id=id)
     context['image'] = image
 
+    # Calibrations
+    if image.type not in ['masterdark', 'masterflat', 'bias', 'dcurrent', 'dark', 'zero']:
+        context['dark'] = find_calibration_image(image, 'masterdark')
+
+        if image.type not in ['flat']:
+            context['flat'] = find_calibration_image(image, 'masterflat')
+
     try:
         # Try to read original FITS keywords with comments
         filename = posixpath.join(settings.BASE_DIR, image.filename)
@@ -186,7 +211,23 @@ def image_preview(request, id=0, size=0):
     header = fits.getheader(filename, -1)
 
     if not request.GET.has_key('raw'):
-        data,header = calibrate.crop_overscans(data, header)
+        if image.type not in ['masterdark', 'masterflat', 'bias', 'dcurrent']:
+            data,header = calibrate.crop_overscans(data, header)
+
+            if image.type not in ['dark', 'zero']:
+                cdark = find_calibration_image(image, 'masterdark')
+                if cdark is not None:
+                    dark = fits.getdata(cdark.filename, -1)
+
+                    data -= dark
+
+                    if image.type not in ['flat']:
+                        cflat = find_calibration_image(image, 'masterflat')
+                        if cflat is not None:
+                            flat = fits.getdata(cflat.filename, -1)
+
+                            data *= np.median(flat)/flat
+
 
     if size:
         data = rescale(data, size/data.shape[1], mode='reflect', multichannel=False, anti_aliasing=True)

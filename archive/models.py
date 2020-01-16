@@ -11,21 +11,24 @@ from django.db import models
 from django.contrib.postgres.fields import JSONField
 
 class Images(models.Model):
+    id = models.IntegerField(primary_key=True)
     filename = models.TextField(unique=True, blank=True, null=True)
     night = models.TextField(blank=True, null=True)
     time = models.DateTimeField(blank=True, null=True)
     target = models.IntegerField(blank=True, null=True)
     type = models.TextField(blank=True, null=True)
     filter = models.TextField(blank=True, null=True)
+    exposure = models.FloatField(blank=True, null=True)
     ccd = models.TextField(blank=True, null=True)
-    site = models.TextField(blank=True, null=True)
     serial = models.IntegerField(blank=True, null=True)
+    binning = models.TextField(blank=True, null=True)
+    site = models.TextField(blank=True, null=True)
     ra = models.FloatField(blank=True, null=True)
     dec = models.FloatField(blank=True, null=True)
     radius = models.FloatField(blank=True, null=True)
-    exposure = models.FloatField(blank=True, null=True)
     width = models.IntegerField(blank=True, null=True)
     height = models.IntegerField(blank=True, null=True)
+    # footprints skipped
     mean = models.FloatField(blank=True, null=True)
     median = models.FloatField(blank=True, null=True)
     keywords = JSONField(blank=True, null=True)
@@ -33,4 +36,34 @@ class Images(models.Model):
     class Meta:
         managed = False
         db_table = 'images'
+        app_label = 'fram'
+
+class Calibrations(models.Model):
+    id = models.IntegerField(primary_key=True)
+    filename = models.TextField(unique=True, blank=True, null=True)
+    night = models.TextField(blank=True, null=True)
+    time = models.DateTimeField(blank=True, null=True)
+    target = models.IntegerField(blank=True, null=True)
+    type = models.TextField(blank=True, null=True)
+    filter = models.TextField(blank=True, null=True)
+    exposure = models.FloatField(blank=True, null=True)
+    ccd = models.TextField(blank=True, null=True)
+    serial = models.IntegerField(blank=True, null=True)
+    binning = models.TextField(blank=True, null=True)
+    site = models.TextField(blank=True, null=True)
+    ra = models.FloatField(blank=True, null=True)
+    dec = models.FloatField(blank=True, null=True)
+    radius = models.FloatField(blank=True, null=True)
+    width = models.IntegerField(blank=True, null=True)
+    height = models.IntegerField(blank=True, null=True)
+    # footprints skipped
+    mean = models.FloatField(blank=True, null=True)
+    median = models.FloatField(blank=True, null=True)
+    keywords = JSONField(blank=True, null=True)
+    cropped_width = models.IntegerField(blank=True, null=True)
+    cropped_height = models.IntegerField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'calibrations'
         app_label = 'fram'
