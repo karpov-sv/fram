@@ -129,7 +129,7 @@ def mad(arr):
     med = np.median(arr)
     return np.median(np.abs(arr - med))
 
-def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=3.0, use_fwhm=False, verbose=True):
+def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=3.0, wcs=None, use_fwhm=False, verbose=True):
     if r0 > 0.0:
         kernel = make_kernel(r0)
     else:
@@ -225,18 +225,20 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     # Quality cuts
     fidx = (flux > 0) & (magerr < 0.1)
 
-    if header:
-        # If header is provided, we may build WCS from it and convert x,y to ra,dec
+    if wcs is None and header is not None:
+        # If header is provided, we may build WCS from it
         wcs = WCS(header)
+
+    if wcs is not None:
+        # If WCS is provided we may convert x,y to ra,dec
         ra,dec = wcs.all_pix2world(obj0['x'][idx], obj0['y'][idx], 0)
     else:
-        #ra,dec = None,None
         ra,dec = np.zeros_like(obj0['x'][idx]),np.zeros_like(obj0['y'][idx])
 
     if verbose:
         print("All done")
 
-    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx]}
+    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx], 'aper':aper, 'bkgann':bkgann}
 
 def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, use_fwhm=False, verbose=True):
     if r0 > 0.0:

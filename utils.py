@@ -20,20 +20,27 @@ def colorbar(obj=None, ax=None, size="5%", pad=0.1):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size=size, pad=pad)
 
-    plt.colorbar(obj, cax=cax)
+    ax.get_figure().colorbar(obj, cax=cax)
 
     if should_restore:
         plt.sca(ax)
 
-def imshow(image, qq=[0.5,97.5], show_colorbar=True, **kwargs):
+def imshow(image, qq=[0.5,97.5], show_colorbar=True, show_axis=True, ax=None, **kwargs):
+    if ax is None:
+        ax = plt.gca()
+
     vmin1,vmax1 = np.percentile(image[np.isfinite(image)], qq)
     if not kwargs.has_key('vmin'):
         kwargs['vmin'] = vmin1
     if not kwargs.has_key('vmax'):
         kwargs['vmax'] = vmax1
-    plt.imshow(image, **kwargs)
+    img = ax.imshow(image, **kwargs)
+    if not show_axis:
+        ax.set_axis_off()
+    else:
+        ax.set_axis_on()
     if show_colorbar:
-        colorbar()
+        colorbar(img, ax=ax)
 
 def breakpoint():
     try:
@@ -43,7 +50,7 @@ def breakpoint():
         import pdb
         pdb.set_trace()
 
-def binned_map(x, y, value, bins=16, statistic='mean', qq=[0.5, 97.5], show_colorbar=True, show_dots=False, ax=None):
+def binned_map(x, y, value, bins=16, statistic='mean', qq=[0.5, 97.5], show_colorbar=True, show_dots=False, ax=None, **kwargs):
     gmag0, xe, ye, binnumbers = binned_statistic_2d(x, y, value, bins=bins, statistic=statistic)
 
     limits = np.percentile(gmag0[np.isfinite(gmag0)], qq)
@@ -51,10 +58,12 @@ def binned_map(x, y, value, bins=16, statistic='mean', qq=[0.5, 97.5], show_colo
     if ax is None:
         ax = plt.gca()
 
-    im = ax.imshow(gmag0.T, origin='lower', extent=[xe[0], xe[-1], ye[0], ye[-1]], interpolation='nearest', vmin=limits[0], vmax=limits[1], aspect='auto')
+    if not kwargs.has_key('aspect'):
+        kwargs['aspect'] = 'auto'
+
+    im = ax.imshow(gmag0.T, origin='lower', extent=[xe[0], xe[-1], ye[0], ye[-1]], interpolation='nearest', vmin=limits[0], vmax=limits[1], **kwargs)
     if show_colorbar:
-        fig = ax.get_figure()
-        fig.colorbar(im, ax=ax)
+        colorbar(im, ax=ax)
 
     if show_dots:
         ax.set_autoscale_on(False)
