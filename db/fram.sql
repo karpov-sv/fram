@@ -42,8 +42,6 @@ CREATE INDEX images_q3c_idx ON images (q3c_ang2ipix(ra, dec));
 
 -- Dedicated view for calibration frames only
 CREATE OR REPLACE VIEW calibrations AS
-SELECT *,
-       (keywords->>'NAXIS1')::INT AS cropped_width,
-       (keywords->>'NAXIS2')::INT AS cropped_height
+SELECT *
 FROM images
 WHERE type='masterdark' OR type='bias' OR type='dcurrent' OR type='masterflat';

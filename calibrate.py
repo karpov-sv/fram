@@ -7,8 +7,11 @@ from scipy.stats import sigmaclip
 # Configurations
 calibration_configs = [
     # Old and unsupported?..
-#     {'serial':2328, 'binning':'1x1'}, # Something strange
-#     {'serial':3072, 'binning':'1x1'}, # WF5 - no science frames?..
+    # Auger NF3
+    {'serial':2328, 'binning':'1x1', 'date-before':'2017-07-01', 'means_min':350, 'means_max':500, 'airtemp_a': -0.46159676, 'airtemp_b':423.75726376},
+    {'serial':2328, 'binning':'1x1', 'date-after':'2017-07-01', 'means_min':350, 'means_max':500, 'airtemp_a':-0.62109129, 'airtemp_b':398.78857177},
+    # WF5 - no science frames?..
+    # {'serial':3072, 'binning':'1x1'},
 
     # La Palma custom G2
     {'serial':2596, 'binning':'1x1', 'airtemp_a':-0.2576, 'airtemp_b':478.2},
@@ -85,12 +88,38 @@ def rstd(data):
 
 # Parsing of DATASEC-like keywords
 def parse_det(string):
+    '''Parse DATASEC-like keyword'''
     x0,x1,y0,y1 = [int(_)-1 for _ in sum([_.split(':') for _ in string[1:-1].split(',')], [])]
 
     return x0,x1,y0,y1
 
+def get_cropped_shape(shape=None, header=None):
+    '''Get the shape of an image after overscan cropping based on its header or, well, shape'''
+    if shape is None and header is not None:
+        shape = (header['NAXIS2'], header['NAXIS1'])
+
+    if header is None or not header.get('DATASEC'):
+        if shape == (4124, 4148) or shape == (4127,4144):
+            result = (4096, 4096)
+        elif shape == (2062, 2074) or shape == (2063, 2072):
+            result = (2048, 2048)
+        elif shape == (1026, 1062):
+            result = (1024, 1056)
+        else:
+            result = shape
+    elif header.get('DATASEC'):
+        x1,x2,y1,y2 = parse_det(header.get('DATASEC'))
+        result = (y2-y1+1, x2-x1+1)
+    else:
+        result = shape
+
+    return result
+
 # Cropping of overscans if any
 def crop_overscans(image, header=None, subtract=True, cfg=None):
+    ''''Crop overscans from input image based on its header or dimensions.
+    Also, subtract the 'bias' value estimated from either an overscan or pre-determined temperature trend.
+    '''
     if header is not None:
         header = header.copy()
 
@@ -194,6 +223,8 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
         return image
 
 def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True):
+    '''Higher-level image calibration based on its header.
+    Includes overscan cropping and subtraction, bias subtraction and linearization.'''
     cfg = find_calibration_config(header)
 
     if crop:
@@ -210,7 +241,7 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
             param1, param2 = cfg['param1'], cfg['param2']
 
         else:
-            print("Unsupported chip")
+            # print("No linearization for this chip")
             param1, param2 = [0, 1, 0, 0], 0
 
         # Keep linearization parmeters in the header

@@ -55,6 +55,8 @@ def process_file(filename, night=None, site=None, fram=None):
 
     image,header = crop_overscans(image, header, subtract=False)
 
+    cropped_width,cropped_height = image.shape[1],image.shape[0]
+
     # Clean up the header a bit
     header.remove('HISTORY', remove_all=True, ignore_missing=True)
     header.remove('COMMENT', remove_all=True, ignore_missing=True)
@@ -99,7 +101,7 @@ def process_file(filename, night=None, site=None, fram=None):
 
     keywords = dict(header)
 
-    fram.query('INSERT INTO images (filename,night,time,target,type,filter,ccd,serial,site,ra,dec,radius,exposure,width,height,footprint,footprint10,binning,mean,median,keywords) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (filename) DO NOTHING', (filename,night,time,target,type,filter,ccd,serial,site,ra0,dec0,radius,exposure,width,height,footprint,footprint10,binning,mean,median,keywords))
+    fram.query('INSERT INTO images (filename,night,time,target,type,filter,ccd,serial,site,ra,dec,radius,exposure,width,height,cropped_width,cropped_height,footprint,footprint10,binning,mean,median,keywords) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (filename) DO NOTHING', (filename,night,time,target,type,filter,ccd,serial,site,ra0,dec0,radius,exposure,width,height,cropped_width,cropped_height,footprint,footprint10,binning,mean,median,keywords))
 
     return {'filename':filename, 'night':night, 'time':time, 'target':target, 'type':type, 'filter':filter, 'ccd':ccd, 'serial':serial, 'site':site, 'ra0':ra0, 'dec0':dec0, 'radius':radius, 'exposure':exposure, 'width':width, 'height':height, 'binning':binning, 'mean':mean, 'median':median}
 
@@ -183,9 +185,9 @@ if __name__ == '__main__':
     if options.process_files:
         # Process single files
         fram = Fram()
-        for filename in args:
+        for i,filename in enumerate(args):
             try:
-                print(filename)
+                print(i, '/', len(args), filename)
                 if options.replace:
                     fram.query('DELETE FROM images WHERE filename=%s', (filename,))
                 process_file(filename, fram=fram)
