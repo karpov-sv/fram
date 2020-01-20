@@ -28,6 +28,8 @@ class Images(models.Model):
     radius = models.FloatField(blank=True, null=True)
     width = models.IntegerField(blank=True, null=True)
     height = models.IntegerField(blank=True, null=True)
+    cropped_width = models.IntegerField(blank=True, null=True)
+    cropped_height = models.IntegerField(blank=True, null=True)
     # footprints skipped
     mean = models.FloatField(blank=True, null=True)
     median = models.FloatField(blank=True, null=True)

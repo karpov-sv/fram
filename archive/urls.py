@@ -26,8 +26,11 @@ urlpatterns = [
     url(r'^images/(?P<id>\d+)/full$', views_images.image_preview, name='image_full'),
     url(r'^images/(?P<id>\d+)/view$', views_images.image_preview, {'size':800}, name='image_view'),
     url(r'^images/(?P<id>\d+)/preview$', views_images.image_preview, {'size':128}, name='image_preview'),
-    url(r'^images/(?P<id>\d+)/fwhm$', views_images.image_fwhm, name='image_fwhm'),
-    url(r'^images/(?P<id>\d+)/wcs$', views_images.image_wcs, name='image_wcs'),
+    # Image analysis
+    url(r'^images/(?P<id>\d+)/bg$', views_images.image_analysis, {'mode':'bg'}, name='image_bg'),
+    url(r'^images/(?P<id>\d+)/fwhm$', views_images.image_analysis, {'mode':'fwhm'}, name='image_fwhm'),
+    url(r'^images/(?P<id>\d+)/wcs$', views_images.image_analysis, {'mode':'wcs'}, name='image_wcs'),
+    url(r'^images/(?P<id>\d+)/zero$', views_images.image_analysis, {'mode':'zero'}, name='image_zero'),
 
     # Cutouts
     url(r'^images/cutouts/?$', views_images.images_cutouts, name='images_cutouts'),

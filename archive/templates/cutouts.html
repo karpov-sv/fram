@@ -1,26 +1,26 @@
 {% extends "template.html" %}
 
-{% block ptitle %}Search : FRAM Archive{% endblock %}
+{% block ptitle %}Image Cutouts : FRAM Archive{% endblock %}
 
-{% block title %}Search FRAM archive{% endblock %}
+{% block title %}Image cutouts from FRAM archive{% endblock %}
 
 {% block content %}
 
-<!-- Full images -->
+<!-- Cutouts -->
 
-<h3>Image search</h3>
+<h3>Image cutouts</h3>
 
-{% if message %}
+{% if message_cutout %}
   <div class="alert alert-warning" role="alert">
-    {{ message }}
+    {{ message_cutout }}
   </div>
 {% endif %}
 
-<form class="form mb-4" role="form" action="{% url 'search' %}" method="post">{% csrf_token %}
+<form class="form mb-4" role="form" action="{% url 'search_cutouts' %}" method="post">{% csrf_token %}
   <div class="form-group">
     <div class="input-group">
       <div class="input-group-prepend">
-        <span class="input-group-text" id="addon-coords">Center:</span>
+        <span class="input-group-text" id="addon-coords">Position:</span>
       </div>
       <input type="text" class="form-control" id="coords" name="coords" placeholder="Coordinates or SIMBAD object name" size=40 aria-label="Coordinates" aria-describedby="addon-coords">
 
@@ -28,7 +28,7 @@
         <span class="input-group-text" id="addon-sr">Radius:</span>
       </div>
       <div class="input-group-append">
-        <input type="text" class="form-control" id="sr" name="sr" placeholder="Radius, degrees" size=15  aria-label="Radius" aria-describedby="addon-sr">
+        <input type="text" class="form-control" id="sr" name="sr" placeholder="Radius, degrees" size=15 value="0.1" aria-label="Radius" aria-describedby="addon-sr">
       </div>
 
     </div>
@@ -84,18 +84,6 @@
         {% endfor %}
       </select>
 
-      <!-- Type -->
-      <div class="input-group-prepend">
-        <span class="input-group-text" id="addon-type">Type:</span>
-      </div>
-
-      <select class="custom-select" name="type" title="Telescope type"  aria-label="Type" aria-describedby="addon-type">
-        <option value="all">All</option>
-        {% for type in types %}
-          <option value="{{ type.type }}">{{ type.type }}</option>
-        {% endfor %}
-      </select>
-
       <!-- Target -->
       <div class="input-group-prepend">
         <span class="input-group-text" id="addon-target">Target:</span>
@@ -104,6 +92,7 @@
       <input type="text" class="form-control" id="target" name="target" placeholder="Target ID" size=20 aria-label="Target" aria-describedby="addon-target">
 
     </div>
+
   </div>
 
   <div class="form-group row">
@@ -120,13 +109,13 @@
 
     </div>
 
-    <!-- Filename -->
+    <!-- Max distance -->
     <div class="input-group col-sm">
       <div class="input-group-prepend">
-        <span class="input-group-text" id="addon-filename">Filename:</span>
+        <span class="input-group-text" id="addon-target">Max Dist:</span>
       </div>
 
-      <input type="text" class="form-control" id="filename" name="filename" placeholder="Part of image filename" size=20 aria-label="Filename" aria-describedby="addon-filename">
+      <input type="text" class="form-control" id="maxdist" name="maxdist" placeholder="Distance from frame center, degrees" size=20 aria-label="MaxDist" aria-describedby="addon-maxdist">
     </div>
 
   </div>
@@ -136,10 +125,9 @@
     <button type="submit" class="btn btn-secondary">Search</button>
   </div>
 
-
   <div class="form-text text-muted">
-    It will search the database of all images - object frames, dark/flat calibrations etc.<br>
-    If the position and radius are specified, only images with their centers located within this distance from query position are returned.<br>
+    It will return cutouts of all object images containing the specified sky point, with the size defined by the search radius.<br>
+    <i>Max Dist</i> parameter defines the maximal acceptable distance from frame center, and may be useful to skip the images where cutout center is in the frame corners where distortions are significant.
   </div>
 </form>
 

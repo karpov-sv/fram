@@ -10,6 +10,11 @@ import os, sys, posixpath
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 import numpy as np
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+import statsmodels.api as sm
+
 from skimage.transform import rescale
 from StringIO import StringIO
 from esutil import htm
@@ -29,21 +34,33 @@ from .fram.fram import Fram, parse_iso_time, get_night
 
 # TODO: memoize the result
 def find_calibration_image(image, type='masterdark', night=None, site=None, ccd=None, serial=None, exposure=None, cropped_width=None, cropped_height=None, filter=None, binning=None):
-    calibs = Calibrations.objects.order_by('-night')
+    calibs = Calibrations.objects.all()
 
-    calibs = calibs.filter(night__lte=image.night)
+    calibs = calibs.filter(type=type)
+
     calibs = calibs.filter(site=image.site)
     calibs = calibs.filter(ccd=image.ccd)
     calibs = calibs.filter(serial=image.serial)
-    calibs = calibs.filter(exposure=image.exposure)
-    calibs = calibs.filter(cropped_width=image.keywords['NAXIS1'])
-    calibs = calibs.filter(cropped_width=image.keywords['NAXIS1'])
+
+    if type not in ['bias', 'dcurrent', 'masterflat']:
+        calibs = calibs.filter(exposure=image.exposure)
+
+    calibs = calibs.filter(cropped_width=image.cropped_width)
+    calibs = calibs.filter(cropped_height=image.cropped_height)
     calibs = calibs.filter(binning=image.binning)
 
     if type in ['masterflat']:
-        calibs = calibs.filter(filter=filter)
+        calibs = calibs.filter(filter=image.filter)
 
-    return calibs.first()
+    print(type, image.site, image.ccd, image.serial, image.binning, image.keywords['NAXIS1'], image.keywords['NAXIS2'], image.filter, image.exposure)
+
+    calibs1 = calibs.filter(night__lte=image.night).order_by('-night')
+    if calibs1.first():
+        return calibs1.first()
+    else:
+        # No frames earlier than the date, let's look for a later one!
+        calibs1 = calibs.filter(night__gte=image.night).order_by('night')
+        return calibs1.first()
 
 def get_images(request):
     images = Images.objects.all()
@@ -185,7 +202,7 @@ def image_details(request, id=0):
     if image.type not in ['masterdark', 'masterflat', 'bias', 'dcurrent', 'dark', 'zero']:
         context['dark'] = find_calibration_image(image, 'masterdark')
 
-        if image.type not in ['flat']:
+        if context['dark'] and image.type not in ['flat']:
             context['flat'] = find_calibration_image(image, 'masterflat')
 
     try:
@@ -210,6 +227,9 @@ def image_preview(request, id=0, size=0):
     data = fits.getdata(filename, -1)
     header = fits.getheader(filename, -1)
 
+    if request.GET.has_key('size'):
+        size = int(request.GET.get('size', 0))
+
     if not request.GET.has_key('raw'):
         if image.type not in ['masterdark', 'masterflat', 'bias', 'dcurrent']:
             data,header = calibrate.crop_overscans(data, header)
@@ -218,26 +238,28 @@ def image_preview(request, id=0, size=0):
                 cdark = find_calibration_image(image, 'masterdark')
                 if cdark is not None:
                     dark = fits.getdata(cdark.filename, -1)
-
                     data -= dark
 
                     if image.type not in ['flat']:
                         cflat = find_calibration_image(image, 'masterflat')
                         if cflat is not None:
                             flat = fits.getdata(cflat.filename, -1)
-
                             data *= np.median(flat)/flat
 
+        ldata = data
+    else:
+        ldata,lheader = calibrate.crop_overscans(data, header, subtract=False)
 
     if size:
-        data = rescale(data, size/data.shape[1], mode='reflect', multichannel=False, anti_aliasing=True)
+        data = rescale(data, size/data.shape[1], mode='reflect', multichannel=False, anti_aliasing=True, preserve_range=True)
 
     figsize = (data.shape[1], data.shape[0])
 
     fig = Figure(facecolor='white', dpi=72, figsize=(figsize[0]/72, figsize[1]/72))
 
-    limits = np.percentile(data, [0.5, 99.5])
-    fig.figimage(data, vmin=limits[0], vmax=limits[1], origin='lower')
+    limits = np.percentile(ldata[np.isfinite(ldata)], [2.5, float(request.GET.get('qq', 99.75))])
+
+    fig.figimage(data, vmin=limits[0], vmax=limits[1], origin='lower', cmap=request.GET.get('cmap', 'Blues_r'))
 
     canvas = FigureCanvas(fig)
 
@@ -272,7 +294,7 @@ def images_nights(request):
 
     return TemplateResponse(request, 'nights.html', context=context)
 
-def image_fwhm(request, id=0):
+def image_analysis(request, id=0, mode='fwhm'):
     image = Images.objects.get(id=id)
     filename = image.filename
     filename = posixpath.join(settings.BASE_DIR, filename)
@@ -280,14 +302,165 @@ def image_fwhm(request, id=0):
     data = fits.getdata(filename, -1)
     header = fits.getheader(filename, -1)
 
-    data,header = calibrate.crop_overscans(data, header)
+    cdark = find_calibration_image(image, 'masterdark')
+    if cdark is not None:
+        dark = fits.getdata(cdark.filename, -1)
+        data,header = calibrate.calibrate(data, header, dark=dark) # Subtract dark and linearize
 
-    fig = Figure(facecolor='white', dpi=72, figsize=(14,12))
-    ax = fig.add_subplot(111)
+        cflat = find_calibration_image(image, 'masterflat')
+        if cflat is not None:
+            flat = fits.getdata(cflat.filename, -1)
+            data *= np.median(flat)/flat
 
-    obj = survey.get_objects_sep(data, use_fwhm=True)
-    utils.binned_map(obj['x'], obj['y'], obj['fwhm'], bins=16, statistic='median', ax=ax)
-    ax.set_title('%s - %s %s %s %s - half flux radius mean %.2f median %.2f pix' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, str(image.exposure), np.mean(obj['fwhm']), np.median(obj['fwhm'])))
+    if mode == 'zero':
+        fig = Figure(facecolor='white', dpi=72, figsize=(16,8), tight_layout=True)
+    else:
+        fig = Figure(facecolor='white', dpi=72, figsize=(14,12), tight_layout=True)
+
+    if mode == 'bg':
+        # Extract the background
+        import sep
+        bg = sep.Background(data.astype(np.double))
+
+        ax = fig.add_subplot(111)
+        utils.imshow(bg.back(), ax=ax, origin='lower')
+        ax.set_title('%s - %s %s %s %s - bg mean %.2f median %.2f rms %.2f' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, str(image.exposure), np.mean(bg.back()), np.median(bg.back()), np.std(bg.back())))
+
+    elif mode == 'fwhm':
+        # Detect objects and plot their FWHM
+        obj = survey.get_objects_sep(data, use_fwhm=True)
+
+        ax = fig.add_subplot(111)
+        utils.binned_map(obj['x'], obj['y'], obj['fwhm'], bins=16, statistic='median', ax=ax)
+        ax.set_title('%s - %s %s %s %s - half flux radius mean %.2f median %.2f pix' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, str(image.exposure), np.mean(obj['fwhm']), np.median(obj['fwhm'])))
+
+    elif mode == 'wcs':
+        # Detect objects
+        obj = survey.get_objects_sep(data, use_fwhm=True, verbose=False)
+        wcs = WCS(header)
+
+        if wcs is not None:
+            obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
+
+            pixscale = np.hypot(wcs.pixel_scale_matrix[0,0], wcs.pixel_scale_matrix[0,1])
+
+            # Get stars from catalogue
+            fram = Fram()
+            ra0,dec0,sr0 = survey.get_frame_center(header=header)
+            if pixscale < 3.0/3600:
+                cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 8 and v < 15'])
+            else:
+                cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 5 and v < 12'])
+            x,y = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
+
+            sr = pixscale*3*np.median(obj['fwhm'])
+
+            # Match stars
+            h = htm.HTM(10)
+            m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], sr, maxmatch=0)
+            oidx = m[0]
+            cidx = m[1]
+            dist = m[2]*3600
+
+            ax = fig.add_subplot(111)
+            utils.binned_map(obj['x'][oidx], obj['y'][oidx], dist, show_dots=True, bins=16, statistic='median', ax=ax)
+
+            ax.set_title('%s - %s %s %s - displacement mean %.1f median %.1f arcsec' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, np.mean(dist), np.median(dist)))
+
+    elif mode == 'zero':
+        mask = image > 30000
+        if cdark is not None:
+            mask |= dark > np.median(dark) + 3.0*np.std(dark)
+
+        wcs = WCS(header)
+
+        if wcs is not None:
+            pixscale = np.hypot(wcs.pixel_scale_matrix[0,0], wcs.pixel_scale_matrix[0,1])
+
+            if request.GET.get('aper'):
+                obj = survey.get_objects_sep(data, wcs=wcs, aper=float(request.GET.get('aper')), use_fwhm=False, verbose=False)
+            else:
+                obj = survey.get_objects_sep(data, wcs=wcs, use_fwhm=True, verbose=False)
+
+            # Get stars from catalogue
+            fram = Fram()
+            ra0,dec0,sr0 = survey.get_frame_center(header=header)
+            if pixscale < 3.0/3600:
+                cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 8 and v < 15'])
+            else:
+                cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 5 and v < 12'])
+            x,y = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
+
+            sr = pixscale*np.median(obj['fwhm'])
+
+            # Match stars
+            h = htm.HTM(10)
+            m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], sr, maxmatch=0)
+            oidx = m[0]
+            cidx = m[1]
+            dist = m[2]*3600
+
+            x,y = obj['x'][oidx],obj['y'][oidx]
+            omag,omagerr = obj['mag'][oidx],obj['magerr'][oidx]
+            oflags = obj['flags'][oidx]
+
+            x = (x - header['NAXIS1']/2)*2/header['NAXIS1']
+            y = (y - header['NAXIS2']/2)*2/header['NAXIS2']
+
+            # http://www.aerith.net/astro/color_conversion.html
+            cb = cat['b'][cidx]
+            cv = cat['v'][cidx]
+            cr = cat['r'][cidx]
+            cj = cat['j'][cidx]
+            ck = cat['k'][cidx]
+            ci = cv - 1.6069*(cj-ck) + 0.0503 # V - Ic = 1.6069 * (J - Ks) + 0.0503   (0.1 < J - Ks < 0.8)
+            cmagerr = np.sqrt(cat['ebt'][cidx]**2)# + cat['ebt'][cidx]**2 + cat['ej'][cidx]**2)/np.sqrt(3)
+
+            cmag = {'B':cb, 'V':cv, 'R':cr, 'I':ci, 'J':cj, 'K':ck}.get(header['FILTER'])
+
+            tmagerr = np.hypot(cmagerr, omagerr)
+
+            delta_mag = cmag - omag
+            weights = 1.0/tmagerr**2
+
+            X = survey.make_series(1.0, x, y, order=4)
+
+            X = np.vstack(X).T
+            Y = delta_mag
+
+            idx = (oflags == 0)  & (cb-cv>-0.2) & (cb-cv<2)
+
+            for iter in range(3):
+                if len(X[idx]) < 3:
+                    break
+
+                C = sm.WLS(Y[idx], X[idx], weights=weights[idx]).fit()
+
+                YY = np.sum(X*C.params,axis=1)
+                idx = (oflags == 0) & (cb-cv>-0.2)  & (cb-cv<2) #& (np.abs((Y-YY)/tmagerr) < 5.0)
+
+            ax = fig.add_subplot(221)
+            ax.plot(cmag, Y-YY, '.')
+            ax.errorbar(cmag, Y-YY, tmagerr, fmt='.', capsize=0, color='blue', alpha=0.2)
+
+            ax.plot(cmag[idx], (Y-YY)[idx], '.', color='red', alpha=0.5)
+            ax.axhline(0, ls=':', alpha=0.8, color='black')
+            ax.set_xlabel('Catalogue mag')
+            ax.set_ylabel('Instrumental - Model')
+            ax.set_ylim(-1.5,1.5)
+
+            ax = fig.add_subplot(223)
+            ax.errorbar(cat['bt'][cidx]-cat['vt'][cidx], Y-YY, tmagerr, fmt='.', capsize=0, alpha=0.3)
+            ax.plot((cat['bt']-cat['vt'])[cidx][idx], (Y-YY)[idx], '.', color='red', alpha=0.3)
+            ax.axhline(0, ls=':', alpha=0.8, color='black')
+            ax.set_xlabel('BT-VT')
+            ax.set_ylabel('Instrumental - Model')
+            ax.set_ylim(-1.5,1.5)
+            ax.set_xlim(-1.5,5)
+
+            ax = fig.add_subplot(122)
+            utils.binned_map(obj['x'][oidx][idx], obj['y'][oidx][idx], (Y-YY*0)[idx], bins=8, aspect='equal', ax=ax)
+            ax.set_title('filter %s aper %.1f' % (header['FILTER'], obj['aper']))
 
     canvas = FigureCanvas(fig)
 
@@ -305,6 +478,16 @@ def image_wcs(request, id=0):
     header = fits.getheader(filename, -1)
 
     data,header = calibrate.crop_overscans(data, header)
+    cdark = find_calibration_image(image, 'masterdark')
+    if cdark is not None:
+        dark = fits.getdata(cdark.filename, -1)
+        data -= dark
+
+        cflat = find_calibration_image(image, 'masterflat')
+        if cflat is not None:
+            flat = fits.getdata(cflat.filename, -1)
+            data *= np.median(flat)/flat
+
     wcs = WCS(header)
 
     fig = Figure(facecolor='white', dpi=72, figsize=(14,12))
@@ -347,6 +530,16 @@ def image_cutout(request, id=0, size=0, mode='view'):
     header = fits.getheader(filename, -1)
     data,header = calibrate.crop_overscans(data, header)
 
+    cdark = find_calibration_image(image, 'masterdark')
+    if cdark is not None:
+        dark = fits.getdata(cdark.filename, -1)
+        data -= dark
+
+        cflat = find_calibration_image(image, 'masterflat')
+        if cflat is not None:
+            flat = fits.getdata(cflat.filename, -1)
+            data *= np.median(flat)/flat
+
     ra,dec,sr = float(request.GET.get('ra')), float(request.GET.get('dec')), float(request.GET.get('sr'))
 
     wcs = WCS(header)
@@ -375,9 +568,8 @@ def image_cutout(request, id=0, size=0, mode='view'):
     fig = Figure(facecolor='white', dpi=72, figsize=(figsize[0]/72, figsize[1]/72))
 
     if np.any(np.isfinite(crop)):
-        limits = np.percentile(crop[np.isfinite(crop)], [0.5, 99.0])
-
-        fig.figimage(crop, vmin=limits[0], vmax=limits[1], origin='lower')
+        limits = np.percentile(crop[np.isfinite(crop)], [0.5, float(request.GET.get('qq', 99.75))])
+        fig.figimage(crop, vmin=limits[0], vmax=limits[1], origin='lower', cmap=request.GET.get('cmap', 'Blues_r'))
 
     canvas = FigureCanvas(fig)
 

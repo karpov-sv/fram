@@ -1,5 +1,9 @@
 {% extends "template.html" %}
 
+{% block head %}
+  {% include "popup_image.html" %}
+{% endblock %}
+
 {% block ptitle %}Image {{image.id}} : FRAM Archive{% endblock %}
 
 {% block title %}Image {{image.id}}{% endblock %}
@@ -16,10 +20,14 @@
     <a href="{% url 'image_full' image.id %}?raw=1" title="Click for a raw image"><i class="fa fa-file-image-o"></i> Raw image</a>
     <span> - </span>
     <a href="{% url 'image_download' image.id %}" title="Click to download original file"><i class="fa fa-download"></i> Download FITS</a>
+    <br>
+    <a href="{% url 'image_bg' image.id %}" title="Click to inspect image background" onClick="return popupImage(event, '{%  url 'image_bg' image.id %}', 'Background', true)"><i class="fa fa-map"></i> Background</a>
     <span> - </span>
-    <a href="{% url 'image_fwhm' image.id %}" title="Click to inspect image FWHM"><i class="fa fa-bullseye"></i> FWHM</a>
+    <a href="{% url 'image_fwhm' image.id %}" title="Click to inspect image FWHM"  onClick="return popupImage(event, '{%  url 'image_fwhm' image.id %}', 'FWHM', true)"><i class="fa fa-bullseye"></i> FWHM</a>
     <span> - </span>
-    <a href="{% url 'image_wcs' image.id %}" title="Click to inspect image WCS"><i class="fa fa-map-marker"></i> WCS</a>
+    <a href="{% url 'image_wcs' image.id %}" title="Click to inspect image WCS" onClick="return popupImage(event, '{%  url 'image_wcs' image.id %}', 'WCS', true)"><i class="fa fa-map-marker"></i> WCS</a>
+    <span> - </span>
+    <a href="{% url 'image_zero' image.id %}" title="Click to inspect image ZERO" onClick="return popupImage(event, '{%  url 'image_zero' image.id %}', 'Zero point', true)"><i class="fa fa-map-o"></i> Zero point</a>
   </div>
 
 <table class="table table-sm table-striped mb-4">
@@ -39,11 +47,22 @@
 
   <tr><td>Site:</td><td><a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}" title="All images from this night and site">{{image.site}}</td></tr>
 
-    <tr><td>CCD:</td><td><a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}" title="All images from this night and site and ccd">{{image.ccd}}</a> / <a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}&serial={{ image.serial }}" title="All images from this night and site and ccd">{{ image.serial }}</td></tr>
+  <tr><td>CCD:</td><td><a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}" title="All images from this night and site and ccd">{{image.ccd}}</a> / <a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}&serial={{ image.serial }}" title="All images from this night and site and ccd">{{ image.serial }}</a>
+  </td></tr>
 
   <tr><td>Type:</td><td><a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}&type={{ image.type }}" title="All images from this night and site and ccd of this type">{{ image.type }}</td></tr>
 
-  <tr><td>Exposure:</td><td>{{image.exposure}}</td></tr>
+  <tr><td>Image size:</td><td>
+    {{image.width}}x{{image.height}}
+    {% if image.width != image.keywords.NAXIS1 or image.height != image.keywords.NAXIS2 %}
+      ({{ image.keywords.NAXIS1 }}x{{ image.keywords.NAXIS2 }} usable)
+    {% endif %}
+  </td></tr>
+  <tr><td>Binning:</td><td>
+    {{image.binning}}
+  </td></tr>
+
+  <tr><td>Exposure:</td><td>{{image.exposure}} s</td></tr>
 
   <tr><td>Filter:</td><td><a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}&filter={{ image.filter }}" title="All images from this night and site and ccd in this filter">{{  image.filter }}</td></tr>
 

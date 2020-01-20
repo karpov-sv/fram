@@ -91,4 +91,7 @@ def search(request, mode='images'):
     filters = Images.objects.distinct('filter').values('filter')
     context['filters'] = filters
 
-    return TemplateResponse(request, 'search.html', context=context)
+    if mode == 'cutouts':
+        return TemplateResponse(request, 'cutouts.html', context=context)
+    else:
+        return TemplateResponse(request, 'search.html', context=context)
