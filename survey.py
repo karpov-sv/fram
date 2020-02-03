@@ -6,7 +6,8 @@ import posixpath, glob, datetime, os, sys, tempfile, shutil
 from astropy.wcs import WCS
 from astropy.io import fits
 
-from esutil import coords
+from esutil import coords, htm
+import statsmodels.api as sm
 
 import sep,cv2
 
@@ -29,7 +30,7 @@ def get_frame_center(filename=None, header=None, wcs=None, width=None, height=No
 
     return ra0, dec0, sr
 
-def blind_match_objects(obj, order=4, extra=""):
+def blind_match_objects(obj, order=4, extra="", verbose=False):
     dir = tempfile.mkdtemp(prefix='astrometry')
     wcs = None
     binname = None
@@ -52,6 +53,10 @@ def blind_match_objects(obj, order=4, extra=""):
         wcsname = posixpath.split(filename)[-1]
         tmpname = posixpath.join(dir, posixpath.splitext(wcsname)[0] + '.tmp')
         wcsname = posixpath.join(dir, posixpath.splitext(wcsname)[0] + '.wcs')
+
+        if verbose:
+            print("%s -D %s --no-verify --overwrite --no-plots -T %s %s" % (binname, dir, extra, filename))
+            return
 
         os.system("%s -D %s --no-verify --overwrite --no-plots -T %s %s" % (binname, dir, extra, filename))
 
@@ -336,3 +341,85 @@ def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=No
         print("All done")
 
     return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx]}
+
+def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
+    x0,y0,width,height = np.mean(obj['x']), np.mean(obj['y']), np.max(obj['x'])-np.min(obj['x']), np.max(obj['y'])-np.min(obj['y'])
+
+    # Match stars
+    h = htm.HTM(10)
+    m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], sr, maxmatch=0)
+    # m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], 15.0/3600, maxmatch=0)
+    oidx = m[0]
+    cidx = m[1]
+    dist = m[2]
+
+    cmag = {'B':cat['B'], 'V':cat['V'], 'R':cat['R'], 'I':cat['I']}.get(fname)
+    cmagerr = {'B':cat['Berr'], 'V':cat['Verr'], 'R':cat['Rerr'], 'I':cat['Ierr']}.get(fname)
+
+    if cmag is not None:
+        cmag = cmag[cidx]
+        cmagerr = cmagerr[cidx]
+    else:
+        print('Unsupported filter:', fname)
+        return None
+
+    if clim is not None:
+        idx = cmag < clim
+
+        oidx,cidx,dist,cmag,cmagerr = [_[idx] for _ in oidx,cidx,dist,cmag,cmagerr]
+
+    x,y = obj['x'][oidx],obj['y'][oidx]
+    omag,omagerr = obj['mag'][oidx],obj['magerr'][oidx]
+    oflags = obj['flags'][oidx]
+
+    x = (x - x0)*2/width
+    y = (y - y0)*2/height
+
+    tmagerr = np.hypot(cmagerr, omagerr)
+
+    delta_mag = cmag - omag
+    weights = 1.0/tmagerr**2
+
+    X = make_series(1.0, x, y, order=order)
+
+    X = np.vstack(X).T
+    Y = delta_mag
+
+    idx = (oflags == 0)
+
+    for iter in range(3):
+        if len(X[idx]) < 3:
+            print("Fit failed - %d objects" % len(X[idx]))
+            return None
+
+        C = sm.WLS(Y[idx], X[idx], weights=weights[idx]).fit()
+
+        YY = np.sum(X*C.params,axis=1)
+        idx = (oflags == 0)
+        if thresh and thresh > 0:
+            idx &= (np.abs((Y-YY)/tmagerr) < thresh)
+
+    x = (obj['x'] - x0)*2/width
+    y = (obj['y'] - y0)*2/height
+
+    X = make_series(1.0, x, y, order=order)
+    X = np.vstack(X).T
+    YY1 = np.sum(X*C.params,axis=1)
+
+    mag = obj['mag'] + YY1
+
+    return {
+        # Matching indices and a distance in degrees
+        'cidx':cidx, 'oidx':oidx, 'dist':dist,
+        # Pixel coordinates of matched stars
+        'x':obj['x'][oidx], 'y':obj['y'][oidx], 'oflags':oflags,
+        # All catalogue magnitudes of matched stars
+        'cB':cat['B'][cidx], 'cV':cat['V'][cidx], 'cR':cat['R'][cidx], 'cI':cat['I'][cidx],
+        'cBerr':cat['Berr'][cidx], 'cVerr':cat['Verr'][cidx], 'cRerr':cat['Rerr'][cidx], 'cIerr':cat['Ierr'][cidx],
+        # Catalogue magnitudes of matched stars in proper filter
+        'cmag':cmag, 'cmagerr':cmagerr, 'tmagerr':tmagerr,
+        # Model zero point for all objects, and their corrected magnitudes
+        'mag0':YY1, 'mag':mag,
+        'Y':Y, 'YY':YY,
+        # Subset of matched stars used in the fits
+        'idx':idx}

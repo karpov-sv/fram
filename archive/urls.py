@@ -30,6 +30,7 @@ urlpatterns = [
     url(r'^images/(?P<id>\d+)/bg$', views_images.image_analysis, {'mode':'bg'}, name='image_bg'),
     url(r'^images/(?P<id>\d+)/fwhm$', views_images.image_analysis, {'mode':'fwhm'}, name='image_fwhm'),
     url(r'^images/(?P<id>\d+)/wcs$', views_images.image_analysis, {'mode':'wcs'}, name='image_wcs'),
+    url(r'^images/(?P<id>\d+)/filters$', views_images.image_analysis, {'mode':'filters'}, name='image_filters'),
     url(r'^images/(?P<id>\d+)/zero$', views_images.image_analysis, {'mode':'zero'}, name='image_zero'),
 
     # Cutouts

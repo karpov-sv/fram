@@ -13,7 +13,7 @@ def colorbar(obj=None, ax=None, size="5%", pad=0.1):
         ax = obj.axes
     elif ax is None:
         ax = plt.gca()
-        should_restore = True
+        # should_restore = True
 
     # create an axes on the right side of ax. The width of cax will be 5%
     # of ax and the padding between cax and ax will be fixed at 0.05 inch.
@@ -22,8 +22,8 @@ def colorbar(obj=None, ax=None, size="5%", pad=0.1):
 
     ax.get_figure().colorbar(obj, cax=cax)
 
-    if should_restore:
-        plt.sca(ax)
+    # if should_restore:
+    ax.get_figure().sca(ax)
 
 def imshow(image, qq=[0.5,97.5], show_colorbar=True, show_axis=True, ax=None, **kwargs):
     if ax is None:
@@ -63,6 +63,7 @@ def binned_map(x, y, value, bins=16, statistic='mean', qq=[0.5, 97.5], show_colo
 
     im = ax.imshow(gmag0.T, origin='lower', extent=[xe[0], xe[-1], ye[0], ye[-1]], interpolation='nearest', vmin=limits[0], vmax=limits[1], **kwargs)
     if show_colorbar:
+        pass
         colorbar(im, ax=ax)
 
     if show_dots:

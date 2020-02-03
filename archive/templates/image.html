@@ -27,6 +27,8 @@
     <span> - </span>
     <a href="{% url 'image_wcs' image.id %}" title="Click to inspect image WCS" onClick="return popupImage(event, '{%  url 'image_wcs' image.id %}', 'WCS', true)"><i class="fa fa-map-marker"></i> WCS</a>
     <span> - </span>
+    <a href="{% url 'image_filters' image.id %}" title="Click to inspect image filters" onClick="return popupImage(event, '{%  url 'image_filters' image.id %}', 'Filters', true)"><i class="fa fa-cubes"></i> Filters</a>
+    <span> - </span>
     <a href="{% url 'image_zero' image.id %}" title="Click to inspect image ZERO" onClick="return popupImage(event, '{%  url 'image_zero' image.id %}', 'Zero point', true)"><i class="fa fa-map-o"></i> Zero point</a>
   </div>
 
@@ -72,20 +74,33 @@
   <tr><td>Dec:</td><td>{{image.dec}}</td></tr>
 </table>
 
-<table class="table table-sm table-striped">
-  {% if keywords %}
-  {% for kw in keywords %}
-  <tr {% if kw.key|lower == 'exposure' or kw.key|lower == 'shutter' or kw.key|lower == 'filter' %}class='success'{% endif %}>
-    <td>{{kw.key}}:</td>
-    <td>{{kw.value}}</td>
-    <td>{{kw.comment}}</td>
-  </tr>
-  {% endfor %}
-  {% else %}
-  {% for key,value in image.keywords.items %}
-  <tr><td>{{key}}:</td><td colspan=2>{{value}}</td></tr>
-  {% endfor %}
-  {% endif %}
-</table>
+<!-- Full FITS header -->
+<div class="card">
+  <h5 class="card-header" data-toggle="collapse" data-target="#collapseHeader" aria-expanded="false" aria-controls="collapseHeader">
+    Full FITS header
+  </h5>
+
+  <div class="collapse" id="collapseHeader">
+    <div class="card-body pr-0 pl-0 pt-0 pb-0">
+
+      <table class="table table-sm table-striped">
+        {% if keywords %}
+          {% for kw in keywords %}
+            <tr {% if kw.key|lower == 'exposure' or kw.key|lower == 'shutter' or kw.key|lower == 'filter' %}class='success'{% endif %}>
+              <td>{{kw.key}}:</td>
+              <td>{{kw.value}}</td>
+              <td>{{kw.comment}}</td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          {% for key,value in image.keywords.items %}
+            <tr><td>{{key}}:</td><td colspan=2>{{value}}</td></tr>
+          {% endfor %}
+        {% endif %}
+      </table>
+
+    </div>
+  </div>
+</div>
 
 {% endblock %}

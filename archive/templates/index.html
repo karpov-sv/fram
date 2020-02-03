@@ -1,6 +1,9 @@
 {% extends "template.html" %}
 
-{% block ptitle %}FRAM{% endblock %}
+{% load tags %}
+{% load static %}
+
+{% block ptitle %}FRAM Archive{% endblock %}
 
 {% block title %}FRAM data archive{% endblock %}
 
@@ -13,7 +16,8 @@
   <div class="card-group mb-4">
     {% for site in sites %}
       <div class="card">
-        <img class="card-img-top" src="https://pc048b.fzu.cz/fram/webcam/{{ site.site }}.jpg"/>
+        <!-- <img class="card-img-top" src="https://pc048b.fzu.cz/fram/webcam/{{ site.site }}.jpg"/> -->
+        <img class="card-img-top" src="{% get_root %}{% static site.site|add:'.jpg' %}"/>
         <div class="card-body">
           <h5 class="card-title">{{ site.site|upper }}</h5>
 
@@ -33,15 +37,15 @@
     <h4>Our telescopes</h4>
     <ul>
       <li>
-        <span class="lead">FRAM-Auger</span> is a 30 cm f/6.8 telescope located at Pierre Auger observatory, Malargue, Argentina. Telescope is equipped with B, V, R and I filters, and has a field of view of 60’x60’, with pixel scale of 0.92’’/pix
+        <span class="lead">FRAM-Auger</span> is a 30 cm f/6.8 telescope located at Pierre Auger observatory, Malargue, Argentina. Telescope is equipped with B, V, R and I filters, and has a field of view of 60’x60’, with pixel scale of 0.92’’/pix. Also, there is a wide-field camera based on a Nikkor 300/2.8 lens and G4-16000 CCD, providing 7x7 degrees field of view with 6’’/pix pixel scale. The camera is equipped with B, V, R, and I filters.
       </li>
 
       <li>
-        <span class="lead">FRAM-CTA-N</span> is a 25 cm f/6.3 telescope located at Observatorio del Roque de los Muchachos, La Palma, Spain. Telescope is equipped with B, V, R and z filters, with 26’x26’ field of view and 1.52’’/pix pixel scale.
+        <span class="lead">FRAM-CTA-N</span> is a 25 cm f/6.3 telescope located at Observatorio del Roque de los Muchachos, La Palma, Spain. Telescope is equipped with B, V, R and z filters, with 26’x26’ field of view and 1.52’’/pix pixel scale. Also, there is a wide-field camera based on a Zeiss 135/2.0 lens and a G4-16000 CCD, providing 15x15 deg fields of view with 14.1’’/pix pixel scale, and equipped with B, V, R, and I filters.
       </li>
 
       <li>
-        ...
+        <span class="lead">FRAM-CTA-S0</span> and <span class="lead">FRAM-CTA-1</span> are twin wide-field cameras installed at Paranal Observatory, Chile. They are based on a Zeiss 135/2.0 lenses and a G4-16000 CCDs, providing 15x15 deg fields of view with 14.1’’/pix pixel scale, and are equipped with B, V, R, and I filters.
       </li>
     </ul>
 

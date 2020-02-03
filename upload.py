@@ -18,7 +18,7 @@ from calibrate import crop_overscans
 
 from fram import Fram, get_night, parse_iso_time
 
-def process_file(filename, night=None, site=None, fram=None):
+def process_file(filename, night=None, site=None, fram=None, verbose=False):
     if fram is None:
         fram = Fram()
 
@@ -38,7 +38,8 @@ def process_file(filename, night=None, site=None, fram=None):
         else:
             night = get_night(time, site=site)
 
-    print(night,site,header['IMAGETYP'])
+    if verbose:
+        print(night,site,header['IMAGETYP'])
 
     # Skip old master calibrations
     if header['IMAGETYP'] in ['mdark', 'mflat']:
@@ -148,7 +149,7 @@ def process_dir(dir, dbname='fram'):
 
         except:
             import traceback
-            print("Exception while processing", dir, filename)
+            print("Exception while processing", filename)
             traceback.print_exc()
             pass
 
@@ -190,7 +191,7 @@ if __name__ == '__main__':
                 print(i, '/', len(args), filename)
                 if options.replace:
                     fram.query('DELETE FROM images WHERE filename=%s', (filename,))
-                process_file(filename, fram=fram)
+                process_file(filename, fram=fram, verbose=True)
             except KeyboardInterrupt:
                 raise
             except:

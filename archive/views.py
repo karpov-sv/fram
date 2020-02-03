@@ -3,6 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
 from django.shortcuts import redirect
+from django.views.decorators.cache import cache_page
+from django.views.decorators.csrf import csrf_protect
 
 import datetime, re
 
@@ -12,6 +14,7 @@ from .utils import permission_required_or_403, redirect_get, db_query
 # FRAM modules
 from .fram.resolve import resolve
 
+@cache_page(3600)
 def index(request):
     context = {}
 
@@ -21,6 +24,8 @@ def index(request):
 
     return TemplateResponse(request, 'index.html', context=context)
 
+@cache_page(3600)
+@csrf_protect
 def search(request, mode='images'):
     message,message_cutout = None,None
 

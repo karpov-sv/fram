@@ -3,6 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from django.http import HttpResponse, FileResponse
 from django.template.response import TemplateResponse
 from django.shortcuts import redirect
+from django.views.decorators.cache import cache_page
+from django.views.decorators.csrf import csrf_protect
 
 from django.db.models import Count
 
@@ -219,6 +221,7 @@ def image_details(request, id=0):
 
     return TemplateResponse(request, 'image.html', context=context)
 
+@cache_page(3600)
 def image_preview(request, id=0, size=0):
     image = Images.objects.get(id=id)
     filename = image.filename
@@ -279,6 +282,7 @@ def image_download(request, id):
     response['Content-Length'] = os.path.getsize(filename)
     return response
 
+@cache_page(3600)
 def images_nights(request):
     # nights = Images.objects.order_by('-night').values('night').annotate(count=Count('night'))
     nights = Images.objects.values('night','site').annotate(count=Count('id')).order_by('-night','site')
@@ -294,23 +298,25 @@ def images_nights(request):
 
     return TemplateResponse(request, 'nights.html', context=context)
 
+@cache_page(3600)
 def image_analysis(request, id=0, mode='fwhm'):
     image = Images.objects.get(id=id)
     filename = image.filename
     filename = posixpath.join(settings.BASE_DIR, filename)
 
-    data = fits.getdata(filename, -1)
+    data = fits.getdata(filename, -1).astype(np.double)
     header = fits.getheader(filename, -1)
 
-    cdark = find_calibration_image(image, 'masterdark')
-    if cdark is not None:
-        dark = fits.getdata(cdark.filename, -1)
-        data,header = calibrate.calibrate(data, header, dark=dark) # Subtract dark and linearize
+    if image.type not in ['masterdark', 'masterflat', 'dcurrent', 'bias']:
+        cdark = find_calibration_image(image, 'masterdark')
+        if cdark is not None:
+            dark = fits.getdata(cdark.filename, -1)
+            data,header = calibrate.calibrate(data, header, dark=dark) # Subtract dark and linearize
 
-        cflat = find_calibration_image(image, 'masterflat')
-        if cflat is not None:
-            flat = fits.getdata(cflat.filename, -1)
-            data *= np.median(flat)/flat
+            cflat = find_calibration_image(image, 'masterflat')
+            if cflat is not None:
+                flat = fits.getdata(cflat.filename, -1)
+                data *= np.median(flat)/flat
 
     if mode == 'zero':
         fig = Figure(facecolor='white', dpi=72, figsize=(16,8), tight_layout=True)
@@ -347,17 +353,17 @@ def image_analysis(request, id=0, mode='fwhm'):
             # Get stars from catalogue
             fram = Fram()
             ra0,dec0,sr0 = survey.get_frame_center(header=header)
-            if pixscale < 3.0/3600:
-                cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 8 and v < 15'])
+            if sr0 < 3.0:
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='atlas', extra=['r > 8 and r < 15'])
             else:
-                cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 5 and v < 12'])
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['v > 5 and v < 12'])
             x,y = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
 
-            sr = pixscale*3*np.median(obj['fwhm'])
+            sr = 5.0*pixscale*np.median(obj['fwhm'])
 
             # Match stars
             h = htm.HTM(10)
-            m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], sr, maxmatch=0)
+            m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], sr, maxmatch=1)
             oidx = m[0]
             cidx = m[1]
             dist = m[2]*3600
@@ -365,7 +371,42 @@ def image_analysis(request, id=0, mode='fwhm'):
             ax = fig.add_subplot(111)
             utils.binned_map(obj['x'][oidx], obj['y'][oidx], dist, show_dots=True, bins=16, statistic='median', ax=ax)
 
-            ax.set_title('%s - %s %s %s - displacement mean %.1f median %.1f arcsec' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, np.mean(dist), np.median(dist)))
+            ax.set_title('%s - %s %s %s - displacement mean %.1f median %.1f arcsec pixel %.1f arcsec' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, np.mean(dist), np.median(dist), pixscale*3600))
+
+    elif mode == 'filters':
+        mask = image > 30000
+        if cdark is not None:
+            mask |= dark > np.median(dark) + 3.0*np.std(dark)
+
+        wcs = WCS(header)
+
+        if wcs is not None:
+            pixscale = np.hypot(wcs.pixel_scale_matrix[0,0], wcs.pixel_scale_matrix[0,1])
+
+            if request.GET.get('aper'):
+                obj = survey.get_objects_sep(data, wcs=wcs, aper=float(request.GET.get('aper')), use_fwhm=False, verbose=False)
+            else:
+                obj = survey.get_objects_sep(data, wcs=wcs, use_fwhm=True, verbose=False)
+
+            # Get stars from catalogue
+            fram = Fram()
+            ra0,dec0,sr0 = survey.get_frame_center(header=header)
+            if 'WF' not in header['CCD_NAME']:
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='atlas', extra=['r < 17'])
+            else:
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['v > 5 and v < 12'])
+
+            for i,fname in enumerate(['B', 'V', 'R', 'I']):
+                ax = fig.add_subplot(2, 2, i+1)
+                match = survey.match_objects(obj, cat, pixscale*np.median(obj['fwhm']), fname=fname)
+                ax.errorbar(match['cB']-match['cV'], match['Y']-match['YY'], match['tmagerr'], fmt='.', capsize=0, alpha=0.2, color='gray')
+                ax.plot((match['cB']-match['cV'])[match['idx']], (match['Y']-match['YY'])[match['idx']], '.', color='red', label=fname, alpha=1.0)
+                ax.legend()
+                ax.axhline(0, color='black', alpha=0.5)
+                ax.set_xlabel('B-V')
+                ax.set_ylabel('Instr - model')
+                ax.set_xlim(-0.0, 2.0)
+                ax.set_ylim(-1.5, 1.5)
 
     elif mode == 'zero':
         mask = image > 30000
@@ -385,81 +426,38 @@ def image_analysis(request, id=0, mode='fwhm'):
             # Get stars from catalogue
             fram = Fram()
             ra0,dec0,sr0 = survey.get_frame_center(header=header)
-            if pixscale < 3.0/3600:
-                cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 8 and v < 15'])
+            if 'WF' not in header['CCD_NAME']:
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='atlas', extra=['r < 17'])
             else:
-                cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 5 and v < 12'])
-            x,y = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['v > 5 and v < 12'])
 
-            sr = pixscale*np.median(obj['fwhm'])
+            match = survey.match_objects(obj, cat, pixscale*np.median(obj['fwhm']), fname=header['FILTER'])
 
-            # Match stars
-            h = htm.HTM(10)
-            m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], sr, maxmatch=0)
-            oidx = m[0]
-            cidx = m[1]
-            dist = m[2]*3600
+            ax = fig.add_subplot(321)
+            ax.errorbar(match['cmag'], match['Y']-match['YY'], match['tmagerr'], fmt='.', capsize=0, color='blue', alpha=0.2)
+            ax.plot(match['cmag'], match['Y']-match['YY'], '.')
 
-            x,y = obj['x'][oidx],obj['y'][oidx]
-            omag,omagerr = obj['mag'][oidx],obj['magerr'][oidx]
-            oflags = obj['flags'][oidx]
-
-            x = (x - header['NAXIS1']/2)*2/header['NAXIS1']
-            y = (y - header['NAXIS2']/2)*2/header['NAXIS2']
-
-            # http://www.aerith.net/astro/color_conversion.html
-            cb = cat['b'][cidx]
-            cv = cat['v'][cidx]
-            cr = cat['r'][cidx]
-            cj = cat['j'][cidx]
-            ck = cat['k'][cidx]
-            ci = cv - 1.6069*(cj-ck) + 0.0503 # V - Ic = 1.6069 * (J - Ks) + 0.0503   (0.1 < J - Ks < 0.8)
-            cmagerr = np.sqrt(cat['ebt'][cidx]**2)# + cat['ebt'][cidx]**2 + cat['ej'][cidx]**2)/np.sqrt(3)
-
-            cmag = {'B':cb, 'V':cv, 'R':cr, 'I':ci, 'J':cj, 'K':ck}.get(header['FILTER'])
-
-            tmagerr = np.hypot(cmagerr, omagerr)
-
-            delta_mag = cmag - omag
-            weights = 1.0/tmagerr**2
-
-            X = survey.make_series(1.0, x, y, order=4)
-
-            X = np.vstack(X).T
-            Y = delta_mag
-
-            idx = (oflags == 0)  & (cb-cv>-0.2) & (cb-cv<2)
-
-            for iter in range(3):
-                if len(X[idx]) < 3:
-                    break
-
-                C = sm.WLS(Y[idx], X[idx], weights=weights[idx]).fit()
-
-                YY = np.sum(X*C.params,axis=1)
-                idx = (oflags == 0) & (cb-cv>-0.2)  & (cb-cv<2) #& (np.abs((Y-YY)/tmagerr) < 5.0)
-
-            ax = fig.add_subplot(221)
-            ax.plot(cmag, Y-YY, '.')
-            ax.errorbar(cmag, Y-YY, tmagerr, fmt='.', capsize=0, color='blue', alpha=0.2)
-
-            ax.plot(cmag[idx], (Y-YY)[idx], '.', color='red', alpha=0.5)
+            ax.plot(match['cmag'][match['idx']], (match['Y']-match['YY'])[match['idx']], '.', color='red', alpha=0.5)
             ax.axhline(0, ls=':', alpha=0.8, color='black')
             ax.set_xlabel('Catalogue mag')
             ax.set_ylabel('Instrumental - Model')
             ax.set_ylim(-1.5,1.5)
 
-            ax = fig.add_subplot(223)
-            ax.errorbar(cat['bt'][cidx]-cat['vt'][cidx], Y-YY, tmagerr, fmt='.', capsize=0, alpha=0.3)
-            ax.plot((cat['bt']-cat['vt'])[cidx][idx], (Y-YY)[idx], '.', color='red', alpha=0.3)
+            ax = fig.add_subplot(323)
+            ax.errorbar(match['cB']-match['cV'], match['Y']-match['YY'], match['tmagerr'], fmt='.', capsize=0, alpha=0.3)
+            ax.plot((match['cB']-match['cV'])[match['idx']], (match['Y']-match['YY'])[match['idx']], '.', color='red', alpha=0.3)
             ax.axhline(0, ls=':', alpha=0.8, color='black')
             ax.set_xlabel('BT-VT')
             ax.set_ylabel('Instrumental - Model')
             ax.set_ylim(-1.5,1.5)
-            ax.set_xlim(-1.5,5)
+            ax.set_xlim(-1.0,4)
+
+            ax = fig.add_subplot(325)
+            ax.hist(match['mag'], bins=100)
+            ax.set_xlabel('Catalogue mag')
 
             ax = fig.add_subplot(122)
-            utils.binned_map(obj['x'][oidx][idx], obj['y'][oidx][idx], (Y-YY*0)[idx], bins=8, aspect='equal', ax=ax)
+            utils.binned_map(obj['x'][match['oidx']][match['idx']], obj['y'][match['oidx']][match['idx']], match['Y'][match['idx']], bins=8, aspect='equal', ax=ax)
             ax.set_title('filter %s aper %.1f' % (header['FILTER'], obj['aper']))
 
     canvas = FigureCanvas(fig)
@@ -469,58 +467,7 @@ def image_analysis(request, id=0, mode='fwhm'):
 
     return response
 
-def image_wcs(request, id=0):
-    image = Images.objects.get(id=id)
-    filename = image.filename
-    filename = posixpath.join(settings.BASE_DIR, filename)
-
-    data = fits.getdata(filename, -1)
-    header = fits.getheader(filename, -1)
-
-    data,header = calibrate.crop_overscans(data, header)
-    cdark = find_calibration_image(image, 'masterdark')
-    if cdark is not None:
-        dark = fits.getdata(cdark.filename, -1)
-        data -= dark
-
-        cflat = find_calibration_image(image, 'masterflat')
-        if cflat is not None:
-            flat = fits.getdata(cflat.filename, -1)
-            data *= np.median(flat)/flat
-
-    wcs = WCS(header)
-
-    fig = Figure(facecolor='white', dpi=72, figsize=(14,12))
-    ax = fig.add_subplot(111)
-
-    # Detect objects
-    obj = survey.get_objects_sep(data, use_fwhm=True, verbose=False)
-    obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
-
-    # Get stars from catalogue
-    fram = Fram()
-    ra0,dec0,sr0 = survey.get_frame_center(header=header)
-    cat = fram.get_stars(ra0, dec0, sr0, extra=['v > 5 and v < 12'])
-    x,y = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
-
-    # Match stars
-    h = htm.HTM(10)
-    m = h.match(obj['ra'],obj['dec'], cat['ra'],cat['dec'], 50.0/3600, maxmatch=0)
-    oidx = m[0]
-    cidx = m[1]
-    dist = m[2]*3600
-
-    utils.binned_map(obj['x'][oidx], obj['y'][oidx], dist, show_dots=True, bins=16, statistic='median', ax=ax)
-
-    ax.set_title('%s - %s %s %s - displacement mean %.1f median %.1f arcsec' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, np.mean(dist), np.median(dist)))
-
-    canvas = FigureCanvas(fig)
-
-    response = HttpResponse(content_type='image/jpeg')
-    canvas.print_jpg(response)
-
-    return response
-
+@cache_page(3600)
 def image_cutout(request, id=0, size=0, mode='view'):
     image = Images.objects.get(id=id)
     filename = image.filename
