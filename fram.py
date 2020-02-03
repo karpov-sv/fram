@@ -66,6 +66,10 @@ class Fram(DB):
             where.append('exposure=%s')
             opts.append(exposure)
 
+        if filter is not None and type in ['masterflat']:
+            where.append('filter=%s')
+            opts.append(filter)
+
         if cropped_width is not None:
             where.append('cropped_width=%s')
             opts.append(cropped_width)

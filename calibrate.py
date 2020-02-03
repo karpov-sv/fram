@@ -80,7 +80,10 @@ def find_calibration_config(header=None, serial=None, binning=None, width=None, 
     return None
 
 # Robust mean
-def rmean(data):
+def rmean(data, max=None):
+    if max is not None:
+        data = np.asarray(data)
+        data = data[data<max]
     return np.mean(sigmaclip(data, 3.0, 3.0)[0])
 
 def rstd(data):
@@ -133,10 +136,10 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
         bias = rmean(list(image[1:4, 150:-150].flatten()) + list(image[-7:, 150:-150].flatten()))
 
     elif image.shape == (4127,4144): # Official firmwares after enabling overscans in Windows utility
-        bias = rmean(list(image[3:7, 300:-300].flatten()) + list(image[-17:-2, 300:-300].flatten()))
+        bias = rmean(list(image[3:7, 300:-300].flatten()) + list(image[-17:-4, 300:-300].flatten()))
 
     elif image.shape == (2063, 2072) and header.get('BINNING') == '2x2': # The same, 2x2 binning
-        bias = rmean(list(image[2:3, 150:-150].flatten()) + list(image[-8:-1, 150:-150].flatten()))
+        bias = rmean(list(image[2:3, 150:-150].flatten()) + list(image[-8:-2, 150:-150].flatten()))
 
     elif image.shape == (1026, 1062): # Overscan-enabled custom G2 on La Palma
         bias = rmean(list(image[:, -5:]))
