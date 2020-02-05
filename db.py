@@ -189,7 +189,7 @@ class DB:
         elif catalog == 'atlas':
             # ATLAS-refcat2 - has measured Gaia, GaiaBP, GaiaRP, g, r, i, z
             table = np.lib.recfunctions.append_fields(table,
-                        ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr'],
+                        ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr', 'zerr'],
                         [
                             # B
                             table['g'] + 0.313*(table['g'] - table['r']) + 0.219, # B-g = (0.313 +/- 0.003)*(g-r)  + (0.219 +/- 0.002)
@@ -205,9 +205,11 @@ class DB:
                             table['dg'],
                             # Rerr
                             table['dr'],
-                            # err
+                            # Ierr
                             table['di'],
+                            # zerr
+                            table['dz'],
                         ],
-                        [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
+                        [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
 
         return table

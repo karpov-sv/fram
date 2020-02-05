@@ -353,8 +353,8 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
     cidx = m[1]
     dist = m[2]
 
-    cmag = {'B':cat['B'], 'V':cat['V'], 'R':cat['R'], 'I':cat['I']}.get(fname)
-    cmagerr = {'B':cat['Berr'], 'V':cat['Verr'], 'R':cat['Rerr'], 'I':cat['Ierr']}.get(fname)
+    cmag = {'B':cat['B'], 'V':cat['V'], 'R':cat['R'], 'I':cat['I'], 'z':cat['z']}.get(fname)
+    cmagerr = {'B':cat['Berr'], 'V':cat['Verr'], 'R':cat['Rerr'], 'I':cat['Ierr'], 'z':cat['zerr']}.get(fname)
 
     if cmag is not None:
         cmag = cmag[cidx]
