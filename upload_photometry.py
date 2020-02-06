@@ -53,7 +53,7 @@ if __name__ == '__main__':
         s = StringIO()
 
         for i in xrange(len(p['ra'])):
-            print(id, p['time'], p['night'], p['site'], p['ccd'], p['filter'], p['ra'][i], p['dec'][i], p['mag'][i], p['magerr'][i], p['flags'][i], p['std'], p['len'], sep='\t', end='\n', file=s)
+            print(id, p['time'], p['night'], p['site'], p['ccd'], p['filter'], p['ra'][i], p['dec'][i], p['mag'][i], p['magerr'][i], p['flags'][i], p['std'], p['nstars'], sep='\t', end='\n', file=s)
 
         s.seek(0)
         cur.copy_from(s, 'photometry', sep='\t', columns=['image', 'time', 'night', 'site', 'ccd', 'filter', 'ra', 'dec', 'mag', 'magerr', 'flags', 'std', 'nstars'], size=655350)

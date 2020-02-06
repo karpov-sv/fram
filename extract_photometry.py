@@ -157,7 +157,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
                                        'ra':obj['ra'], 'dec':obj['dec'],
                                        'mag':match['mag'], 'magerr':obj['magerr'], 'flags':obj['flags'],
                                        'std':np.std((match['Y']-match['YY'])[match['idx']]),
-                                       'len':len((match['Y']-match['YY'])[match['idx']])})
+                                       'nstars':len((match['Y']-match['YY'])[match['idx']])})
 
 if __name__ == '__main__':
     from optparse import OptionParser
