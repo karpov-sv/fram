@@ -3,10 +3,11 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
 from django.shortcuts import redirect
+from django.urls import reverse
 from django.views.decorators.cache import cache_page
 from django.views.decorators.csrf import csrf_protect
 
-import datetime, re
+import datetime, re, urllib
 
 from .models import Images
 from .utils import permission_required_or_403, redirect_get, db_query
@@ -27,6 +28,8 @@ def index(request):
 @cache_page(3600)
 @csrf_protect
 def search(request, mode='images'):
+    context = {}
+
     message,message_cutout = None,None
 
     if request.method == 'POST':
@@ -34,51 +37,54 @@ def search(request, mode='images'):
 
         params = {}
 
-        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist', 'filename']:
+        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist', 'filename', 'coords', 'sr_value', 'sr_units', 'magerr', 'nstars']:
             if request.POST.get(_) and request.POST.get(_) != 'all':
                 params[_] = request.POST.get(_)
 
-        if mode == 'cutouts':
-            # Search cutouts only
-            coords = request.POST.get('coords')
-            sr = request.POST.get('sr')
-            name,ra,dec = resolve(coords)
+        coords = request.POST.get('coords')
+        if request.POST.get('sr_value'):
+            sr = float(request.POST.get('sr_value', 0.1))*{'arcsec':1/3600, 'arcmin':1/60, 'deg':1}.get(request.POST.get('sr_units', 'deg'), 1)
+            params['sr'] = sr
+        else:
+            sr = 0
+        name,ra,dec = resolve(coords)
 
-            if name:
-                params['name'] = name
-                params['ra'] = ra
-                params['dec'] = dec
-                params['sr'] = float(sr) if sr else 0.1
+        if name:
+            params['name'] = name
+            params['ra'] = ra
+            params['dec'] = dec
+
+        if name or mode == 'images':
+            if mode == 'cutouts':
+                # Search cutouts only
+                if sr > 1:
+                    params['sr'] = 1
 
                 return redirect_get('images_cutouts',  get=params)
-            else:
-                message_cutout = "Can't resolve the query position: " + coords
+
+            elif mode == 'photometry':
+                # Search photometry database
+                if sr > 5/60:
+                    params['sr'] = 5/60
+                    params['sr_value'] = 1
+                    params['sr_units'] = 'arcmin'
+
+                context['lc'] = reverse('photometry_lc') + '?' + urllib.urlencode(params)
+                context['lc_json'] = reverse('photometry_json') + '?' + urllib.urlencode(params)
+                context['lc_text'] = reverse('photometry_text') + '?' + urllib.urlencode(params)
+                context['lc_mjd'] = reverse('photometry_mjd') + '?' + urllib.urlencode(params)
+
+            elif mode == 'images':
+                # Search full images
+                if name and not sr:
+                    context['message'] = "Search radius not set"
+                else:
+                    return redirect_get('images',  get=params)
 
         else:
-            # Search full images
-            if request.POST.get('coords') and not request.POST.get('sr'):
-                message = "No search radius specified"
-            elif request.POST.get('coords') and request.POST.get('sr'):
-                coords = request.POST.get('coords')
-                sr = request.POST.get('sr')
-                sr = float(sr) if sr else 1
+            context['message'] = "Can't resolve query position: " + coords
 
-                name, ra, dec = resolve(coords)
-                print(name,ra,dec)
-
-                if name:
-                    params['ra'] = ra
-                    params['dec'] = dec
-                    params['sr'] = sr
-
-                    return redirect_get('images',  get=params)
-                else:
-                    message = "Can't resolve the query center: " + coords
-            else:
-                return redirect_get('images',  get=params)
-
-    # No form submitted, just render a search form
-    context = {'message': message, 'message_cutout': message_cutout}
+        context.update(params)
 
     # Possible values for fields
     types = Images.objects.distinct('type').values('type')
@@ -98,5 +104,7 @@ def search(request, mode='images'):
 
     if mode == 'cutouts':
         return TemplateResponse(request, 'cutouts.html', context=context)
+    elif mode == 'photometry':
+        return TemplateResponse(request, 'photometry.html', context=context)
     else:
         return TemplateResponse(request, 'search.html', context=context)

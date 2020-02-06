@@ -15,7 +15,6 @@ import numpy as np
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
-import statsmodels.api as sm
 
 from skimage.transform import rescale
 from StringIO import StringIO
@@ -149,6 +148,9 @@ def images_list(request):
         images = images.order_by('-time')
 
     context['images'] = images
+
+    if images.count() == 1:
+        return redirect('image_details', id=images.first().id)
 
     return TemplateResponse(request, 'images.html', context=context)
 
@@ -356,7 +358,7 @@ def image_analysis(request, id=0, mode='fwhm'):
             if sr0 < 3.0:
                 cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='atlas', extra=['r > 8 and r < 15'])
             else:
-                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['v > 5 and v < 12'])
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['vt > 5 and vt < 11'])
             x,y = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
 
             sr = 5.0*pixscale*np.median(obj['fwhm'])
@@ -394,7 +396,7 @@ def image_analysis(request, id=0, mode='fwhm'):
             if 'WF' not in header['CCD_NAME']:
                 cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='atlas', extra=['r < 17'])
             else:
-                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['v > 5 and v < 12'])
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['vt > 5 and vt < 11'])
 
             for i,fname in enumerate(['B', 'V', 'R', 'I']):
                 ax = fig.add_subplot(2, 2, i+1)
@@ -429,14 +431,12 @@ def image_analysis(request, id=0, mode='fwhm'):
             if 'WF' not in header['CCD_NAME']:
                 cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='atlas', extra=['r < 17'])
             else:
-                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['v > 5 and v < 12'])
+                cat = fram.get_stars(ra0, dec0, sr0, limit=100000, extra=['vt > 5 and vt < 11'])
 
             match = survey.match_objects(obj, cat, pixscale*np.median(obj['fwhm']), fname=header['FILTER'])
 
             ax = fig.add_subplot(321)
             ax.errorbar(match['cmag'], match['Y']-match['YY'], match['tmagerr'], fmt='.', capsize=0, color='blue', alpha=0.2)
-            ax.plot(match['cmag'], match['Y']-match['YY'], '.')
-
             ax.plot(match['cmag'][match['idx']], (match['Y']-match['YY'])[match['idx']], '.', color='red', alpha=0.5)
             ax.axhline(0, ls=':', alpha=0.8, color='black')
             ax.set_xlabel('Catalogue mag')
@@ -447,7 +447,7 @@ def image_analysis(request, id=0, mode='fwhm'):
             ax.errorbar(match['cB']-match['cV'], match['Y']-match['YY'], match['tmagerr'], fmt='.', capsize=0, alpha=0.3)
             ax.plot((match['cB']-match['cV'])[match['idx']], (match['Y']-match['YY'])[match['idx']], '.', color='red', alpha=0.3)
             ax.axhline(0, ls=':', alpha=0.8, color='black')
-            ax.set_xlabel('BT-VT')
+            ax.set_xlabel('B-V')
             ax.set_ylabel('Instrumental - Model')
             ax.set_ylim(-1.5,1.5)
             ax.set_xlim(-1.0,4)

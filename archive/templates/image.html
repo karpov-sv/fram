@@ -68,7 +68,9 @@
 
   <tr><td>Filter:</td><td><a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}&filter={{ image.filter }}" title="All images from this night and site and ccd in this filter">{{  image.filter }}</td></tr>
 
-  <tr><td>Target:</td><td><a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}&target={{ image.target }}" title="All images from this night and site and ccd in this target">{{  image.target }}</td></tr>
+    <tr><td>Target:</td><td><a href="{% url 'images' %}?night={{ image.night }}&site={{ image.site }}&ccd={{ image.ccd }}&target={{ image.target }}" title="All images from this night and site and ccd in this target">{{  image.target }}
+      {% if image.keywords.OBJECT %}/ {{ image.keywords.OBJECT }}{% endif %}
+    </td></tr>
 
   <tr><td>RA:</td><td>{{image.ra}}</td></tr>
   <tr><td>Dec:</td><td>{{image.dec}}</td></tr>

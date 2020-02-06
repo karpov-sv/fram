@@ -30,6 +30,10 @@ def subtract(value, arg):
     return value - arg
 
 @register.filter
+def multiply(value, arg):
+    return value*arg
+
+@register.filter
 def GET_remove(value, key):
     value = value.copy()
 

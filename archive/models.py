@@ -69,3 +69,23 @@ class Calibrations(models.Model):
         managed = False
         db_table = 'calibrations'
         app_label = 'fram'
+
+class Photometry(models.Model):
+    image = models.IntegerField(blank=True, null=True)
+    night = models.TextField(blank=True, null=True)
+    time = models.DateTimeField(blank=True, null=True, primary_key=True)
+    filter = models.TextField(blank=True, null=True)
+    ccd = models.TextField(blank=True, null=True)
+    site = models.TextField(blank=True, null=True)
+    ra = models.FloatField(blank=True, null=True)
+    dec = models.FloatField(blank=True, null=True)
+    mag = models.FloatField(blank=True, null=True)
+    magerr = models.FloatField(blank=True, null=True)
+    flags = models.FloatField(blank=True, null=True)
+    std = models.FloatField(blank=True, null=True)
+    nstars = models.FloatField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'photometry'
+        app_label = 'fram'

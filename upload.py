@@ -166,7 +166,7 @@ if __name__ == '__main__':
     parser = OptionParser(usage="usage: %prog [options] arg")
     parser.add_option('-n', '--nthreads', help='Number of threads to use', action='store', dest='nthreads', type='int', default=1)
     parser.add_option('-d', '--db', help='Database name', action='store', dest='db', type='str', default='fram')
-    parser.add_option('-f', '--files', help='Database name', action='store_true', dest='process_files', default=False)
+    parser.add_option('-f', '--files', help='Process files instead of directories', action='store_true', dest='process_files', default=False)
     parser.add_option('-r', '--replace', help='Replace already existing records in database', action='store_true', dest='replace', default=False)
 
     (options,args) = parser.parse_args()

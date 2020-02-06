@@ -8,6 +8,7 @@ from . import settings
 
 from . import views
 from . import views_images
+from . import views_photometry
 
 urlpatterns = [
     # Index
@@ -39,9 +40,17 @@ urlpatterns = [
     url(r'^images/(?P<id>\d+)/cutout/preview$', views_images.image_cutout, {'size':300}, name='image_cutout_preview'),
     url(r'^images/(?P<id>\d+)/cutout/download$', views_images.image_cutout, {'mode':'download'}, name='image_cutout_download'),
 
+    # Photometry
+    # url(r'^photometry/?$', views_photometry.photometry, name='photometry'),
+    url(r'^photometry/lc$', views_photometry.lc, {'mode': 'jpeg'}, name='photometry_lc'),
+    url(r'^photometry/json$', views_photometry.lc, {'mode': 'json'}, name='photometry_json'),
+    url(r'^photometry/text$', views_photometry.lc, {'mode': 'text'}, name='photometry_text'),
+    url(r'^photometry/mjd$', views_photometry.lc, {'mode': 'mjd'}, name='photometry_mjd'),
+
     # Search
     url(r'^search/?$', views.search, name='search'),
-    url(r'^search/cutouts?$', views.search, {'mode':'cutouts'}, name='search_cutouts'),
+    url(r'^search/cutouts/?$', views.search, {'mode':'cutouts'}, name='search_cutouts'),
+    url(r'^search/photometry/?$', views.search, {'mode':'photometry'}, name='search_photometry'),
 
     # Robots
     url(r'^robots.txt$', lambda r: HttpResponse("User-agent: *\nDisallow: /\n", content_type="text/plain")),

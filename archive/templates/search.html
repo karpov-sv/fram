@@ -8,7 +8,7 @@
 
 <!-- Full images -->
 
-<h3>Image search</h3>
+  <!-- <h3>Image search</h3> -->
 
 {% if message %}
   <div class="alert alert-warning" role="alert">
@@ -22,13 +22,20 @@
       <div class="input-group-prepend">
         <span class="input-group-text" id="addon-coords">Center:</span>
       </div>
-      <input type="text" class="form-control" id="coords" name="coords" placeholder="Coordinates or SIMBAD object name" size=40 aria-label="Coordinates" aria-describedby="addon-coords">
+      <input type="text" class="form-control" name="coords" placeholder="Coordinates or SIMBAD object name" size=40 aria-label="Coordinates" aria-describedby="addon-coords">
 
       <div class="input-group-append">
         <span class="input-group-text" id="addon-sr">Radius:</span>
       </div>
       <div class="input-group-append">
-        <input type="text" class="form-control" id="sr" name="sr" placeholder="Radius, degrees" size=15  aria-label="Radius" aria-describedby="addon-sr">
+        <input type="text" class="form-control" name="sr_value" placeholder="Radius" size=15 {% if sr_value %}value="{{ sr_value }}"{% endif %} aria-label="Radius" aria-describedby="addon-sr">
+      </div>
+      <div class="input-group-append">
+        <select class="custom-select" name="sr_units" title="Units"  aria-label="Units">
+          <option value="deg" {% if sr_units == 'deg' %}selected{% endif %}>Deg</option>
+          <option value="arcmin" {% if sr_units == 'arcmin' %}selected{% endif %}>Arcmin</option>
+          <option value="arcsec" {% if sr_units == 'arcsec' %}selected{% endif %}>Arcsec</option>
+        </select>
       </div>
 
     </div>

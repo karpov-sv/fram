@@ -8,11 +8,9 @@
 
 <!-- Cutouts -->
 
-<h3>Image cutouts</h3>
-
-{% if message_cutout %}
+{% if message %}
   <div class="alert alert-warning" role="alert">
-    {{ message_cutout }}
+    {{ message }}
   </div>
 {% endif %}
 
@@ -28,7 +26,14 @@
         <span class="input-group-text" id="addon-sr">Radius:</span>
       </div>
       <div class="input-group-append">
-        <input type="text" class="form-control" id="sr" name="sr" placeholder="Radius, degrees" size=15 value="0.1" aria-label="Radius" aria-describedby="addon-sr">
+        <input type="text" class="form-control" name="sr_value" placeholder="Radius" size=15 value="{% if sr_value %}{{ sr_value }}{% else %}10{% endif %}" aria-label="Radius" aria-describedby="addon-sr">
+      </div>
+      <div class="input-group-append">
+        <select class="custom-select" name="sr_units" title="Units"  aria-label="Units">
+          <option value="arcsec" {% if sr_units == 'arcsec' %}selected{% endif %}>Arcsec</option>
+          <option value="arcmin" {% if sr_units == 'arcmin' or not sr_units %}selected{% endif %}>Arcmin</option>
+          <option value="deg" {% if sr_units == 'deg' %}selected{% endif %}>Deg</option>
+        </select>
       </div>
 
     </div>
