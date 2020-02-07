@@ -8,8 +8,10 @@ from astropy.io import fits
 
 from esutil import coords, htm
 import statsmodels.api as sm
+from scipy.spatial import cKDTree
 
 import sep,cv2
+from StringIO import StringIO
 
 def get_frame_center(filename=None, header=None, wcs=None, width=None, height=None):
     if not wcs:
@@ -431,3 +433,63 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
         'Y':Y, 'YY':YY,
         # Subset of matched stars used in the fits
         'idx':idx}
+
+def fix_distortion(obj, cat, header=None, wcs=None, width=None, height=None, dr=3.0):
+    if header:
+        wcs = wcs.WCS(header)
+        width = header['NAXIS1']
+        height = header['NAXIS2']
+
+    if not wcs or not width or not height:
+        print("Nothing to fix")
+        return
+
+    kdo = cKDTree(np.array([obj['x'], obj['y']]).T)
+    xc,yc = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
+    kdc = cKDTree(np.array([xc,yc]).T)
+
+    m = kdo.query_ball_tree(kdc, dr)
+    nm = np.array([len(_) for _ in m])
+
+    # Distortions
+    dx = np.array([obj['x'][_] - xc[m[_][0]] if nm[_] == 1 else 0 for _ in xrange(len(m))])
+    dy = np.array([obj['y'][_] - yc[m[_][0]] if nm[_] == 1 else 0 for _ in xrange(len(m))])
+
+    # Normalized coordinates
+    x = (obj['x'] - width/2)*2.0/width
+    y = (obj['y'] - height/2)*2.0/height
+
+    X = make_series(1.0, x, y, order=6)
+
+    X = np.vstack(X).T
+    Yx = dx
+    Yy = dy
+
+    # Use only unique matches
+    idx = (nm == 1) # & (distm < 2.0*np.std(distm))
+    Cx = sm.WLS(Yx[idx], X[idx]).fit()
+    Cy = sm.WLS(Yy[idx], X[idx]).fit()
+
+    YYx = np.sum(X*Cx.params, axis=1)
+    YYy = np.sum(X*Cy.params, axis=1)
+
+    obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x']-YYx, obj['y']-YYy, 0)
+
+def load_results(filename):
+    res = None
+    with open(filename, 'r') as ff:
+        res = pickle.load(ff)
+    return res
+
+def store_results(filename, obj):
+    dirname = posixpath.split(filename)[0]
+
+    try:
+        os.makedirs(dirname)
+    except:
+        # import traceback
+        # traceback.print_exc()
+        pass
+
+    with open(filename, 'w') as ff:
+        pickle.dump(obj, ff)
