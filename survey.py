@@ -12,6 +12,7 @@ from scipy.spatial import cKDTree
 
 import sep,cv2
 from StringIO import StringIO
+import cPickle as pickle
 
 def get_frame_center(filename=None, header=None, wcs=None, width=None, height=None):
     if not wcs:
