@@ -102,6 +102,10 @@ def get_images(request):
     if serial and serial != 'all':
         images = images.filter(serial=serial)
 
+    exposure = request.GET.get('exposure')
+    if exposure and exposure != 'all':
+        images = images.filter(exposure=exposure)
+
     filename = request.GET.get('filename')
     if filename:
         if '%' in filename:

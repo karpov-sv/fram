@@ -52,9 +52,9 @@ calibration_configs = [
 ]
 
 # Selecting proper calibration config
-def find_calibration_config(header=None, serial=None, binning=None, width=None, height=None, date_before=None, date_after=None):
+def find_calibration_config(header=None, serial=None, binning=None, width=None, height=None, date=None):
     if header is None:
-        header = {'serial':serial, 'binning':binning, 'width':width, 'height':height, 'date-before':date_before, 'date-after':date_after}
+        header = {'product_id':serial, 'BINNING':binning, 'NAXIS1':width, 'NAXIS2':height, 'DATE-OBS':date}
 
     for cfg in calibration_configs:
         if cfg.has_key('serial') and cfg.get('serial') != header['product_id']:
@@ -143,6 +143,23 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
 
     elif image.shape == (1026, 1062): # Overscan-enabled custom G2 on La Palma
         bias = rmean(list(image[:, -5:]))
+
+    elif header and header.get('product_id') >= 6000 and header.get('SHIFT') is not None and image.shape == (4096, 4096):
+        # Ultra-special handling of a MICCD frames what are vertically flipped in respect to GXCCD ones
+        image = image[::-1, :] # Flip the image
+
+        if header.get('CRPIX1') is not None:
+            header['CRPIX2'] = header['NAXIS2'] + 1 - header['CRPIX2']
+            header['CD1_2'] *= -1
+            header['CD2_2'] *= -1
+
+            if header.get('A_ORDER') and header.get('B_ORDER'):
+                for p in xrange(max(header['A_ORDER'], header['B_ORDER'])+1):
+                    for q in xrange(max(header['A_ORDER'], header['B_ORDER'])+1):
+                        if (q % 2) and header.get('A_%d_%d' % (p,q)):
+                            header['A_%d_%d' % (p,q)] *= -1
+                        if (q % 2) == 0 and header.get('B_%d_%d' % (p,q)):
+                            header['B_%d_%d' % (p,q)] *= -1
 
     if bias is not None:
         if header is not None:
