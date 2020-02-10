@@ -6,6 +6,11 @@ import posixpath, glob, datetime, os, sys, tempfile, shutil
 from astropy.wcs import WCS
 from astropy.io import fits
 
+import warnings
+from astropy.wcs import FITSFixedWarning
+warnings.simplefilter(action='ignore', category=FITSFixedWarning)
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 from esutil import coords, htm
 import statsmodels.api as sm
 from scipy.spatial import cKDTree
@@ -137,7 +142,7 @@ def mad(arr):
     med = np.median(arr)
     return np.median(np.abs(arr - med))
 
-def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=3.0, wcs=None, use_fwhm=False, verbose=True):
+def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=3.0, wcs=None, use_fwhm=False, verbose=True, get_fwhm75=False, get_fwhm90=False):
     if r0 > 0.0:
         kernel = make_kernel(r0)
     else:
@@ -227,8 +232,8 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     # better FWHM estimation
     # fwhm = 2.0*np.sqrt(np.hypot(obj0['a'][idx], obj0['b'][idx])*np.log(2))
     fwhm = sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.5, mask=mask)[0]
-    fwhm75 = sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.75, mask=mask)[0]
-    fwhm90 = sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.9, mask=mask)[0]
+    fwhm75 = fwhm if not get_fwhm75 else sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.75, mask=mask)[0]
+    fwhm90 = fwhm if not get_fwhm90 else sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.9, mask=mask)[0]
 
     # Quality cuts
     fidx = (flux > 0) & (magerr < 0.1)
@@ -247,103 +252,6 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
         print("All done")
 
     return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx], 'aper':aper, 'bkgann':bkgann}
-
-def get_objects_cat(image, header=None, mask=None, cat=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, use_fwhm=False, verbose=True):
-    if r0 > 0.0:
-        kernel = make_kernel(r0)
-    else:
-        kernel = None
-
-    if verbose:
-        print("Preparing background mask")
-
-    mask_bg = np.zeros_like(mask)
-    mask_segm = np.zeros_like(mask)
-
-    if False:
-        # Simple heuristics to mask regions with rapidly varying background
-
-        for _ in xrange(3):
-            bg1 = sep.Background(image, mask=mask|mask_bg, bw=256, bh=256)
-            bg2 = sep.Background(image, mask=mask|mask_bg, bw=32, bh=32)
-
-            ibg = bg2.back() - bg1.back()
-
-            tmp = np.abs(ibg - np.median(ibg)) > 5.0*1.4*mad(ibg)
-            mask_bg |= cv2.dilate(tmp.astype(np.uint8), np.ones([100,100])).astype(np.bool)
-
-    if verbose:
-        print("Building background map")
-
-    bg = sep.Background(image, mask=mask|mask_bg, bw=64, bh=64)
-    image1 = image - bg.back()
-
-    sep.set_extract_pixstack(image.shape[0]*image.shape[1])
-
-    if False:
-        # Mask regions around huge objects as they are most probably corrupted by saturation and blooming
-        if verbose:
-            print("Extracting initial objects")
-
-        obj0,segm = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg, filter_kernel=kernel, segmentation_map=True)
-
-        if verbose:
-            print("Dilating large objects")
-
-        mask_segm = np.isin(segm, [_+1 for _,npix in enumerate(obj0['npix']) if npix > 100])
-        mask_segm = cv2.dilate(mask_segm.astype(np.uint8), np.ones([10,10])).astype(np.bool)
-
-    if verbose:
-        print("Extracting final objects")
-
-    obj0 = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg|mask_segm, filter_kernel=kernel)
-
-    if use_fwhm:
-        # Estimate FHWM and use it to get optimal aperture size
-        fwhm = 2.0*np.sqrt(np.hypot(obj0['a'], obj0['b'])*np.log(2))
-        fwhm = np.median(fwhm)
-
-        aper = 1.5*fwhm
-
-        if verbose:
-            print("FWHM = %.2g, aperture = %.2g" % (fwhm, aper))
-
-    wcs = WCS(header)
-    xwin,ywin = wcs.all_world2pix(cat['ra'], cat['dec'], 0)
-
-    # Filter out objects too close to frame edges
-    idx = (np.round(xwin) > edge) & (np.round(ywin) > edge) & (np.round(xwin) < image.shape[1]-edge) & (np.round(ywin) < image.shape[0]-edge)
-
-    if verbose:
-        print("Measuring final objects")
-
-    flux,fluxerr,flag = sep.sum_circle(image1, xwin[idx], ywin[idx], aper, err=bg.rms(), gain=gain, mask=mask|mask_bg|mask_segm, bkgann=bkgann)
-    # For debug purposes, let's make also the same aperture photometry on the background map
-    bgflux,bgfluxerr,bgflag = sep.sum_circle(bg.back(), xwin[idx], ywin[idx], aper, err=bg.rms(), gain=gain, mask=mask|mask_bg|mask_segm)
-
-    bgnorm = bgflux/np.pi/aper**2
-
-    fwhm = 2.0*np.sqrt(np.hypot(obj['a'], obj['b'])*np.log(2))
-
-    # Fluxes to magnitudes
-    mag = -2.5*np.log10(flux)
-    magerr = 2.5*np.log10(1.0 + fluxerr/flux)
-
-    # Quality cuts
-    fidx = (flux > 0) & (magerr < 0.1)
-
-    if header:
-        # If header is provided, we may build WCS from it and convert x,y to ra,dec
-        wcs = WCS(header)
-        ra,dec = wcs.all_pix2world(obj0['x'][idx], obj0['y'][idx], 0)
-    else:
-        #ra,dec = None,None
-        ra,dec = np.zeros_like(obj0['x'][idx]),np.zeros_like(obj0['y'][idx])
-
-    if verbose:
-        print("All done")
-
-    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx]}
 
 def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
     x0,y0,width,height = np.mean(obj['x']), np.mean(obj['y']), np.max(obj['x'])-np.min(obj['x']), np.max(obj['y'])-np.min(obj['y'])
@@ -435,7 +343,62 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
         # Subset of matched stars used in the fits
         'idx':idx}
 
+def fix_wcs(obj, cat, sr, header=None, maxmatch=1, order=6, fix=True):
+    '''Get a refined WCS solution based on cross-matching of objects with catalogue on the sphere.
+    Uses external 'fit-wcs' binary from Astrometry.Net suite'''
+
+    if header is not None:
+        width,height = header['NAXIS1'],header['NAXIS2']
+        wcs = WCS(header)
+
+        if wcs:
+            obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
+    else:
+        width,height = int(np.max(obj['x'])),int(np.max(obj['y']))
+
+    h = htm.HTM(10)
+    oidx,cidx,dist = h.match(obj['ra'], obj['dec'], cat['ra'], cat['dec'], sr, maxmatch=1)
+
+    dir = tempfile.mkdtemp(prefix='astrometry')
+    wcs = None
+    binname = None
+
+    for path in ['.', '/usr/local', '/opt/local']:
+        if os.path.isfile(posixpath.join(path, 'astrometry', 'bin', 'fit-wcs')):
+            binname = posixpath.join(path, 'astrometry', 'bin', 'fit-wcs')
+            break
+
+    if binname:
+        columns = [fits.Column(name='FIELD_X', format='1D', array=obj['x'][oidx] + 1),
+                   fits.Column(name='FIELD_Y', format='1D', array=obj['y'][oidx] + 1),
+                   fits.Column(name='INDEX_RA', format='1D', array=cat['ra'][cidx]),
+                   fits.Column(name='INDEX_DEC', format='1D', array=cat['dec'][cidx])]
+        tbhdu = fits.BinTableHDU.from_columns(columns)
+        filename = posixpath.join(dir, 'list.fits')
+        wcsname = posixpath.join(dir, 'list.wcs')
+
+        tbhdu.writeto(filename, overwrite=True)
+
+        os.system("%s -c %s -o %s -W %d -H %d -C -s %d" % (binname, filename, wcsname, width, height, order))
+
+        if os.path.isfile(wcsname):
+            header = fits.getheader(wcsname)
+            wcs = WCS(header)
+
+            if fix and wcs:
+                obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
+
+    else:
+        print("Astrometry.Net binary not found")
+
+    #print order
+    shutil.rmtree(dir)
+
+    return wcs
+
 def fix_distortion(obj, cat, header=None, wcs=None, width=None, height=None, dr=3.0):
+    '''Refines object sky coordinates based on cross-match with the catalogue in pixel space.
+    Does not use any external tools but can't provide a fixed WCS solution'''
     if header:
         wcs = wcs.WCS(header)
         width = header['NAXIS1']
@@ -488,9 +451,18 @@ def store_results(filename, obj):
     try:
         os.makedirs(dirname)
     except:
-        # import traceback
-        # traceback.print_exc()
         pass
 
     with open(filename, 'w') as ff:
         pickle.dump(obj, ff)
+
+def store_wcs(filename, wcs):
+    dirname = posixpath.split(filename)[0]
+
+    try:
+        os.makedirs(dirname)
+    except:
+        pass
+
+    hdu = fits.PrimaryHDU(header=wcs.to_header(relax=True))
+    hdu.writeto(filename, overwrite=True)
