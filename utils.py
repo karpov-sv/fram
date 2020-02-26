@@ -53,7 +53,11 @@ def breakpoint():
 def binned_map(x, y, value, bins=16, statistic='mean', qq=[0.5, 97.5], show_colorbar=True, show_dots=False, ax=None, **kwargs):
     gmag0, xe, ye, binnumbers = binned_statistic_2d(x, y, value, bins=bins, statistic=statistic)
 
-    limits = np.percentile(gmag0[np.isfinite(gmag0)], qq)
+    vmin1,vmax1 = np.percentile(gmag0[np.isfinite(gmag0)], qq)
+    if not kwargs.has_key('vmin'):
+        kwargs['vmin'] = vmin1
+    if not kwargs.has_key('vmax'):
+        kwargs['vmax'] = vmax1
 
     if ax is None:
         ax = plt.gca()
@@ -61,7 +65,7 @@ def binned_map(x, y, value, bins=16, statistic='mean', qq=[0.5, 97.5], show_colo
     if not kwargs.has_key('aspect'):
         kwargs['aspect'] = 'auto'
 
-    im = ax.imshow(gmag0.T, origin='lower', extent=[xe[0], xe[-1], ye[0], ye[-1]], interpolation='nearest', vmin=limits[0], vmax=limits[1], **kwargs)
+    im = ax.imshow(gmag0.T, origin='lower', extent=[xe[0], xe[-1], ye[0], ye[-1]], interpolation='nearest', **kwargs)
     if show_colorbar:
         pass
         colorbar(im, ax=ax)

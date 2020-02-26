@@ -14,10 +14,14 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from esutil import coords, htm
 import statsmodels.api as sm
 from scipy.spatial import cKDTree
+from scipy.signal import fftconvolve
 
-import sep,cv2
+import sep
+# import cv2
 from StringIO import StringIO
 import cPickle as pickle
+
+convolve = lambda x,y: fftconvolve(x, y, mode='same')
 
 def get_frame_center(filename=None, header=None, wcs=None, width=None, height=None):
     if not wcs:
@@ -142,7 +146,7 @@ def mad(arr):
     med = np.median(arr)
     return np.median(np.abs(arr - med))
 
-def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=3.0, wcs=None, use_fwhm=False, verbose=True, get_fwhm75=False, get_fwhm90=False):
+def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=2.0, wcs=None, use_fwhm=False, use_mask_bg=True, use_mask_large=True, npix_large=100, sn=10.0, verbose=True, get_fwhm75=False, get_fwhm90=False, **kwargs):
     if r0 > 0.0:
         kernel = make_kernel(r0)
     else:
@@ -157,8 +161,10 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     mask_bg = np.zeros_like(mask)
     mask_segm = np.zeros_like(mask)
 
-    if False:
+    if use_mask_bg:
         # Simple heuristics to mask regions with rapidly varying background
+        if verbose:
+            print("Masking rapidly changing background")
 
         for _ in xrange(3):
             bg1 = sep.Background(image, mask=mask|mask_bg, bw=256, bh=256)
@@ -167,7 +173,9 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
             ibg = bg2.back() - bg1.back()
 
             tmp = np.abs(ibg - np.median(ibg)) > 5.0*1.4*mad(ibg)
-            mask_bg |= cv2.dilate(tmp.astype(np.uint8), np.ones([100,100])).astype(np.bool)
+            # mask_bg |= cv2.dilate(tmp.astype(np.uint8), np.ones([100,100])).astype(np.bool)
+            tmp = convolve(tmp.astype(np.uint8), np.ones([30, 30]))
+            mask_bg |= tmp > 0.9
 
     if verbose:
         print("Building background map")
@@ -177,41 +185,44 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
 
     sep.set_extract_pixstack(image.shape[0]*image.shape[1])
 
-    if False:
+    if use_mask_large:
         # Mask regions around huge objects as they are most probably corrupted by saturation and blooming
         if verbose:
             print("Extracting initial objects")
 
-        obj0,segm = sep.extract(image1, err=bg.rms(), thresh=4, minarea=3, mask=mask|mask_bg, filter_kernel=kernel, segmentation_map=True)
+        obj0,segm = sep.extract(image1, err=bg.rms(), thresh=thresh, minarea=minarea, mask=mask|mask_bg, filter_kernel=kernel, segmentation_map=True)
 
         if verbose:
             print("Dilating large objects")
 
-        mask_segm = np.isin(segm, [_+1 for _,npix in enumerate(obj0['npix']) if npix > 100])
-        mask_segm = cv2.dilate(mask_segm.astype(np.uint8), np.ones([10,10])).astype(np.bool)
+        mask_segm = np.isin(segm, [_+1 for _,npix in enumerate(obj0['npix']) if npix > npix_large])
+        # mask_segm = cv2.dilate(mask_segm.astype(np.uint8), np.ones([10,10])).astype(np.bool)
+        tmp = convolve(mask_segm.astype(np.uint8), np.ones([10, 10]))
+        mask_segm = tmp > 0.9
 
     if verbose:
         print("Extracting final objects")
 
-    obj0 = sep.extract(image1, err=bg.rms(), thresh=4, minarea=minarea, mask=mask|mask_bg|mask_segm, filter_kernel=kernel)
+    obj0 = sep.extract(image1, err=bg.rms(), thresh=thresh, minarea=minarea, mask=mask|mask_bg|mask_segm, filter_kernel=kernel, **kwargs)
 
     if use_fwhm:
         # Estimate FHWM and use it to get optimal aperture size
-        fwhm = 2.0*np.sqrt(np.hypot(obj0['a'], obj0['b'])*np.log(2))
-        fwhm = sep.flux_radius(image1, obj0['x'], obj0['y'], relfluxradius*fwhm*np.ones_like(obj0['x']), 0.5, mask=mask)[0]
+        idx = obj0['flag'] == 0
+        fwhm = 2.0*np.sqrt(np.hypot(obj0['a'][idx], obj0['b'][idx])*np.log(2))
+        fwhm = 2.0*sep.flux_radius(image1, obj0['x'][idx], obj0['y'][idx], relfluxradius*fwhm*np.ones_like(obj0['x'][idx]), 0.5, mask=mask)[0]
         fwhm = np.median(fwhm)
 
-        aper = 1.5*fwhm
+        aper = max(1.5*fwhm, aper)
 
         if verbose:
             print("FWHM = %.2g, aperture = %.2g" % (fwhm, aper))
 
     # Windowed positional parameters are often biased in crowded fields, let's avoid them for now
-    # xwin,ywin,flag = sep.winpos(image1, obj0['x'], obj0['y'], 2.0, mask=mask)
+    # xwin,ywin,flag = sep.winpos(image1, obj0['x'], obj0['y'], 0.5, mask=mask)
     xwin,ywin = obj0['x'], obj0['y']
 
     # Filter out objects too close to frame edges
-    idx = (np.round(xwin) > edge) & (np.round(ywin) > edge) & (np.round(xwin) < image.shape[1]-edge) & (np.round(ywin) < image.shape[0]-edge)
+    idx = (np.round(xwin) > edge) & (np.round(ywin) > edge) & (np.round(xwin) < image.shape[1]-edge) & (np.round(ywin) < image.shape[0]-edge) # & (obj0['flag'] == 0)
 
     if minnthresh:
         idx &= (obj0['tnpix'] >= minnthresh)
@@ -229,14 +240,16 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     mag = -2.5*np.log10(flux)
     magerr = 2.5*np.log10(1.0 + fluxerr/flux)
 
-    # better FWHM estimation
+    # better FWHM estimation - FWHM=HFD for Gaussian
     # fwhm = 2.0*np.sqrt(np.hypot(obj0['a'][idx], obj0['b'][idx])*np.log(2))
-    fwhm = sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.5, mask=mask)[0]
-    fwhm75 = fwhm if not get_fwhm75 else sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.75, mask=mask)[0]
-    fwhm90 = fwhm if not get_fwhm90 else sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.9, mask=mask)[0]
+    fwhm = 2.0*sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.5, mask=mask)[0]
+    fwhm75 = fwhm if not get_fwhm75 else 2.0*sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.75, mask=mask)[0]
+    fwhm90 = fwhm if not get_fwhm90 else 2.0*sep.flux_radius(image1, xwin[idx], ywin[idx], relfluxradius*aper*np.ones_like(xwin[idx]), 0.9, mask=mask)[0]
+
+    flag |= obj0['flag'][idx]
 
     # Quality cuts
-    fidx = (flux > 0) & (magerr < 0.1)
+    fidx = (flux > 0) & (magerr < 1.0/sn)
 
     if wcs is None and header is not None:
         # If header is provided, we may build WCS from it
@@ -251,7 +264,7 @@ def get_objects_sep(image, header=None, mask=None, aper=3.0, bkgann=None, r0=0.5
     if verbose:
         print("All done")
 
-    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx], 'aper':aper, 'bkgann':bkgann}
+    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx], 'aper':aper, 'bkgann':bkgann, 'a':obj0['a'][idx][fidx], 'b':obj0['b'][idx][fidx], 'theta':obj0['theta'][idx][fidx]}
 
 def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
     x0,y0,width,height = np.mean(obj['x']), np.mean(obj['y']), np.max(obj['x'])-np.min(obj['x']), np.max(obj['y'])-np.min(obj['y'])
@@ -268,7 +281,7 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
         cmag,cmagerr = cat['B'], cat['Berr']
     elif fname == 'V':
         cmag,cmagerr = cat['V'], cat['Verr']
-    elif fname == 'R':
+    elif fname == 'R' or fname == 'N':
         cmag,cmagerr = cat['R'], cat['Rerr']
     elif fname == 'I':
         cmag,cmagerr = cat['I'], cat['Ierr']
@@ -327,11 +340,32 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
 
     mag = obj['mag'] + YY1
 
+    # Simple analysis of proximity to "good" points
+    mx,my = obj['x'][oidx][idx], obj['y'][oidx][idx]
+    kdo = cKDTree(np.array([obj['x'], obj['y']]).T)
+    kdm = cKDTree(np.array([mx, my]).T)
+
+    mr0 = np.sqrt(width*height/np.sum(idx))
+    m = kdm.query_ball_tree(kdm, 5.0*mr0)
+
+    dists = []
+    for i,ii in enumerate(m):
+        if len(ii) > 1:
+            d1 = [np.hypot(mx[i]-mx[_], my[i]-my[_]) for _ in ii]
+            d1 = np.sort(d1)
+
+            dists.append(d1[1])
+    mr1 = np.median(dists)
+
+    m = kdo.query_ball_tree(kdm, 5.0*mr1)
+    midx = np.array([len(_)>1 for _ in m])
+
     return {
         # Matching indices and a distance in degrees
         'cidx':cidx, 'oidx':oidx, 'dist':dist,
-        # Pixel coordinates of matched stars
-        'x':obj['x'][oidx], 'y':obj['y'][oidx], 'oflags':oflags,
+        # Pixel and sky coordinates of matched stars, as well as their flags
+        'x':obj['x'][oidx], 'y':obj['y'][oidx], 'flags':oflags,
+        'ra':obj['ra'][oidx], 'dec':obj['dec'][oidx],
         # All catalogue magnitudes of matched stars
         'cB':cat['B'][cidx], 'cV':cat['V'][cidx], 'cR':cat['R'][cidx], 'cI':cat['I'][cidx],
         'cBerr':cat['Berr'][cidx], 'cVerr':cat['Verr'][cidx], 'cRerr':cat['Rerr'][cidx], 'cIerr':cat['Ierr'][cidx],
@@ -341,7 +375,9 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
         'mag0':YY1, 'mag':mag,
         'Y':Y, 'YY':YY,
         # Subset of matched stars used in the fits
-        'idx':idx}
+        'idx':idx,
+        # Subset of all objects at 'good' distances from matched ones
+        'midx':midx, 'mr0':mr0, 'mr1':mr1}
 
 def fix_wcs(obj, cat, sr, header=None, maxmatch=1, order=6, fix=True):
     '''Get a refined WCS solution based on cross-matching of objects with catalogue on the sphere.

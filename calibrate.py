@@ -44,7 +44,9 @@ calibration_configs = [
     {'serial':6204, 'binning':'1x1', 'date-before':'2019-12-01', 'airtemp_a':-1.55, 'airtemp_b':599.4, 'param1':[0.05399309, 0.84056592, 0.02539838,-0.06620873], 'param2':2.602603959616151},
     {'serial':6204, 'binning':'2x2', 'date-before':'2019-12-01', 'airtemp_a':-1.51, 'airtemp_b':698.7},
     # 6204 after readout upgrade, seems nonlin did not change
-    {'serial':6204, 'binning':'1x1', 'date-after':'2019-12-01', 'airtemp_a':-1.42, 'airtemp_b':574.1, 'param1':[0.05399309, 0.84056592, 0.02539838,-0.06620873], 'param2':2.602603959616151},
+    {'serial':6204, 'binning':'1x1', 'date-after':'2019-12-01', 'date-before':'2020-02-18', 'airtemp_a':-1.42, 'airtemp_b':574.1, 'param1':[0.05399309, 0.84056592, 0.02539838,-0.06620873], 'param2':2.602603959616151},
+    # 6204, preflash
+    {'serial':6204, 'binning':'1x1', 'date-after':'2020-02-17', 'airtemp_a':-1.42, 'airtemp_b':574.1, 'param1':[0.05399309, 0.84056592, 0.02539838,-0.06620873], 'param2':2.602603959616151},
 
     # 6205
     {'serial':6205, 'binning':'1x1', 'airtemp_a':-1.50, 'airtemp_b':584.0, 'param1':[0.04765044, 0.85458389,-0.03480524, 0.09953474], 'param2':2.8619181700630127},

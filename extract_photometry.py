@@ -120,7 +120,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     gain = header.get('GAIN', 1.0)
     if gain > 100:
         gain /= 1000
-    cmask,cimage = astroscrappy.detect_cosmics(image0, inmask=mask, gain=gain, readnoise=10, psffwhm=2.0*np.median(obj0['fwhm']), satlevel=50000, verbose=False)
+    cmask,cimage = astroscrappy.detect_cosmics(image0, inmask=mask, gain=gain, readnoise=10, psffwhm=np.median(obj0['fwhm']), satlevel=50000, verbose=False)
     cimage /= gain
 
     # Object extraction
