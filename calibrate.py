@@ -50,7 +50,8 @@ calibration_configs = [
 
     # 6205
     {'serial':6205, 'binning':'1x1', 'airtemp_a':-1.50, 'airtemp_b':584.0, 'param1':[0.04765044, 0.85458389,-0.03480524, 0.09953474], 'param2':2.8619181700630127},
-    {'serial':6205, 'binning':'2x2', 'airtemp_a':-1.45, 'airtemp_b':698},
+    {'serial':6205, 'binning':'2x2', 'airtemp_a':-1.45, 'airtemp_b':698, 'date-before':'2019-10-22'},
+    {'serial':6205, 'binning':'2x2', 'airtemp_a':-1.33889045, 'airtemp_b':703.72816149, 'date-after':'2019-10-21'},
 ]
 
 # Selecting proper calibration config
