@@ -187,18 +187,19 @@ class DB:
                         [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
 
         elif catalog == 'atlas':
-            # ATLAS-refcat2 - has measured Gaia, GaiaBP, GaiaRP, g, r, i, z
+            # ATLAS-refcat2 - has measured Gaia, GaiaBP, GaiaRP, g, r, i, z (PanSTARRS ones!)
             table = np.lib.recfunctions.append_fields(table,
                         ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr', 'zerr'],
                         [
+                            # Official transformations from https://arxiv.org/pdf/1203.0297.pdf
                             # B
-                            table['g'] + 0.313*(table['g'] - table['r']) + 0.219, # B-g = (0.313 +/- 0.003)*(g-r)  + (0.219 +/- 0.002)
+                            table['g'] + 0.212 + 0.556*(table['g'] - table['r']) + 0.034*(table['g'] - table['r'])**2,
                             # V
-                            table['g'] - 0.565*(table['g'] - table['r']) - 0.016, # V-g = (-0.565 +/- 0.001)*(g-r) - (0.016 +/- 0.001)
+                            table['r'] + 0.005 + 0.462*(table['g'] - table['r']) + 0.013*(table['g'] - table['r'])**2,
                             # R
-                            table['r'] - 0.153*(table['r'] - table['i']) - 0.117, # R-r = (-0.153 +/- 0.003)*(r-i) - (0.117 +/- 0.003)
+                            table['r'] - 0.137 - 0.108*(table['g'] - table['r']) - 0.029*(table['g'] - table['r'])**2,
                             # I
-                            table['i'] - 0.386*(table['i'] - table['z']) - 0.397, # I-i = (-0.386 +/- 0.004)*(i-z) - (0.397 +/- 0.001)
+                            table['i'] - 0.366 - 0.136*(table['g'] - table['r']) - 0.018*(table['g'] - table['r'])**2,
                             # Berr
                             table['dg'],
                             # Verr
