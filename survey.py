@@ -20,6 +20,7 @@ import sep
 # import cv2
 from StringIO import StringIO
 import cPickle as pickle
+import json
 
 convolve = lambda x,y: fftconvolve(x, y, mode='same')
 
@@ -42,7 +43,7 @@ def get_frame_center(filename=None, header=None, wcs=None, width=None, height=No
 
     return ra0, dec0, sr
 
-def blind_match_objects(obj, order=4, extra="", verbose=False):
+def blind_match_objects(obj, order=4, extra="", verbose=False, fix=True):
     dir = tempfile.mkdtemp(prefix='astrometry')
     wcs = None
     binname = None
@@ -68,7 +69,6 @@ def blind_match_objects(obj, order=4, extra="", verbose=False):
 
         if verbose:
             print("%s -D %s --no-verify --overwrite --no-plots -T %s %s" % (binname, dir, extra, filename))
-            return
 
         os.system("%s -D %s --no-verify --overwrite --no-plots -T %s %s" % (binname, dir, extra, filename))
 
@@ -84,6 +84,9 @@ def blind_match_objects(obj, order=4, extra="", verbose=False):
             if os.path.isfile(wcsname):
                 header = fits.getheader(wcsname)
                 wcs = WCS(header)
+
+                if fix and wcs:
+                    obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
     else:
         print("Astrometry.Net binary not found")
 
@@ -130,8 +133,8 @@ def make_series(mul=1.0, x=1.0, y=1.0, order=1, sum=False, legendre=False, zero=
     else:
         return res
 
-def make_kernel(r0=1.0):
-    x,y = np.mgrid[np.floor(-3.0*r0):np.ceil(3.0*r0+1), np.floor(-3.0*r0):np.ceil(3.0*r0+1)]
+def make_kernel(r0=1.0, ext=1.0):
+    x,y = np.mgrid[np.floor(-ext*r0):np.ceil(ext*r0+1), np.floor(-ext*r0):np.ceil(ext*r0+1)]
     r = np.hypot(x,y)
     image = np.exp(-r**2/2/r0**2)
 
@@ -146,7 +149,7 @@ def mad(arr):
     med = np.median(arr)
     return np.median(np.abs(arr - med))
 
-def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=2.0, wcs=None, use_fwhm=False, use_mask_bg=True, use_mask_large=True, npix_large=100, sn=10.0, verbose=True, get_fwhm75=False, get_fwhm90=False, **kwargs):
+def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=2.0, wcs=None, use_fwhm=False, use_mask_bg=False, use_mask_large=False, npix_large=100, sn=10.0, verbose=True, get_fwhm75=False, get_fwhm90=False, **kwargs):
     if r0 > 0.0:
         kernel = make_kernel(r0)
     else:
@@ -266,7 +269,129 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
 
     return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx], 'aper':aper, 'bkgann':bkgann, 'a':obj0['a'][idx][fidx], 'b':obj0['b'][idx][fidx], 'theta':obj0['theta'][idx][fidx]}
 
-def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
+def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, r0=0.5, bkgann=None, gain=1, edge=0, minarea=5, wcs=None, sn=3.0, verbose=False, extra_params=[], extra_opts={}, _workdir=None, _tmpdir=None):
+    # Find the binary
+    binname = None
+    for path in ['.', '/usr/bin', '/usr/local/bin', '/opt/local/bin']:
+        for exe in ['sex', 'sextractor', 'source-extractor']:
+            if os.path.isfile(posixpath.join(path, exe)):
+                binname = posixpath.join(path, exe)
+                break
+
+    if binname is None:
+        if verbose:
+            print("Can't find SExtractor binary")
+        return None
+
+    workdir = _workdir if _workdir is not None else tempfile.mkdtemp(prefix='sex', dir=_tmpdir)
+    obj = None
+
+    # Prepare
+    imagename = posixpath.join(workdir, 'image.fits')
+    fits.writeto(imagename, image, header, overwrite=True)
+
+    opts = {
+        'VERBOSE_TYPE': 'QUIET',
+        'DETECT_MINAREA': minarea,
+        'GAIN': gain,
+        'DETECT_THRESH': thresh,
+        'WEIGHT_TYPE': 'BACKGROUND',
+    }
+
+    if mask is None:
+        mask = np.zeros_like(image, dtype=np.bool)
+
+    flagsname = posixpath.join(workdir, 'flags.fits')
+    fits.writeto(flagsname, mask.astype(np.int16), overwrite=True)
+    opts['FLAG_IMAGE'] = flagsname
+
+    if np.isscalar(aper):
+        opts['PHOT_APERTURES'] = aper*2
+        size = ''
+    else:
+        opts['PHOT_APERTURES'] = ','.join([str(_*2) for _ in aper])
+        size = '[%d]' % len(aper)
+
+    params = ['MAG_APER'+size, 'MAGERR_APER'+size, 'FLUX_APER'+size, 'FLUXERR_APER'+size, 'X_IMAGE', 'Y_IMAGE', 'ERRX2_IMAGE', 'ERRY2_IMAGE', 'A_IMAGE', 'B_IMAGE', 'THETA_IMAGE', 'FLUX_RADIUS', 'FWHM_IMAGE', 'FLAGS', 'IMAFLAGS_ISO', 'BACKGROUND']
+    params += extra_params
+    paramname = posixpath.join(workdir, 'cfg.param')
+    open(paramname, 'w').write("\n".join(params))
+    opts['PARAMETERS_NAME'] = paramname
+
+    catname = posixpath.join(workdir, 'out.cat')
+    opts['CATALOG_NAME'] = catname
+    opts['CATALOG_TYPE'] = 'FITS_LDAC'
+
+    if not r0:
+        opts['FILTER'] = 'N'
+    else:
+        kernel = make_kernel(r0, ext=1.0)
+        kernelname = posixpath.join(workdir, 'kernel.txt')
+        np.savetxt(kernelname, kernel/np.sum(kernel), fmt=b'%.6f', header='CONV NORM', comments='')
+        opts['FILTER'] = 'Y'
+        opts['FILTER_NAME'] = kernelname
+
+    opts.update(extra_opts)
+
+    # Build the command line
+    # FIXME: quote strings!
+    cmd = binname + ' ' + imagename + ' ' + ' '.join(['-%s %s' % (_,opts[_]) for _ in opts.keys()])
+    if not verbose:
+        cmd += ' > /dev/null 2>/dev/null'
+    if verbose:
+        print(cmd)
+
+    # Run the command!
+
+    res = os.system(cmd)
+
+    if res == 0:
+        data = fits.getdata(catname, -1)
+
+        idx = (data['X_IMAGE'] > edge) & (data['X_IMAGE'] < image.shape[1] - edge)
+        idx &= (data['Y_IMAGE'] > edge) & (data['Y_IMAGE'] < image.shape[0] - edge)
+
+        if np.isscalar(aper):
+            idx &= data['MAGERR_APER'] < 1.0/sn
+            idx &= data['FLUX_APER'] > 0
+        else:
+            idx &= np.all(data['MAGERR_APER'] < 1.0/sn, axis=1)
+            idx &= np.all(data['FLUX_APER'] > 0, axis=1)
+
+        data = data[idx]
+
+        if wcs is None and header is not None:
+            wcs = WCS(header)
+
+        if wcs is not None:
+            ra,dec = wcs.all_pix2world(data['X_IMAGE'], data['Y_IMAGE'], 1)
+        else:
+            ra,dec = np.zeros_like(data['X_IMAGE']),np.zeros_like(data['Y_IMAGE'])
+
+        data['FLAGS'][data['IMAFLAGS_ISO'] > 0] |= 256
+
+        obj = {
+            'x': data['X_IMAGE']-1, 'y': data['Y_IMAGE']-1,
+            'xerr': np.sqrt(data['ERRX2_IMAGE']), 'yerr': np.sqrt(data['ERRY2_IMAGE']),
+            'flux': data['FLUX_APER'], 'fluxerr': data['FLUXERR_APER'],
+            'mag': data['MAG_APER'], 'magerr': data['MAGERR_APER'],
+            'flags': data['FLAGS'], 'ra':ra, 'dec': dec,
+            'bg': data['BACKGROUND'], 'fwhm': data['FWHM_IMAGE'],
+            'aper': aper, 'a': data['A_IMAGE'], 'b': data['B_IMAGE'], 'theta': data['THETA_IMAGE'],
+        }
+
+        for _ in extra_params:
+            obj[_] = data[_]
+    else:
+        if verbose:
+            print("Error", res, "running SExtractor")
+
+    if _workdir is None:
+        shutil.rmtree(workdir)
+
+    return obj
+
+def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None, mag_idx=0):
     x0,y0,width,height = np.mean(obj['x']), np.mean(obj['y']), np.max(obj['x'])-np.min(obj['x']), np.max(obj['y'])-np.min(obj['y'])
 
     # Match stars
@@ -301,8 +426,10 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
         oidx,cidx,dist,cmag,cmagerr = [_[idx] for _ in oidx,cidx,dist,cmag,cmagerr]
 
     x,y = obj['x'][oidx],obj['y'][oidx]
-    omag,omagerr = obj['mag'][oidx],obj['magerr'][oidx]
     oflags = obj['flags'][oidx]
+    omag,omagerr = obj['mag'][oidx],obj['magerr'][oidx]
+    if len(obj['mag'].shape) > 1:
+        omag,omagerr = omag[:,mag_idx],omagerr[:,mag_idx]
 
     x = (x - x0)*2/width
     y = (y - y0)*2/height
@@ -338,7 +465,10 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
     X = np.vstack(X).T
     YY1 = np.sum(X*C.params,axis=1)
 
-    mag = obj['mag'] + YY1
+    if len(obj['mag'].shape) > 1:
+        mag = obj['mag'][:,mag_idx] + YY1
+    else:
+        mag = obj['mag'] + YY1
 
     # Simple analysis of proximity to "good" points
     mx,my = obj['x'][oidx][idx], obj['y'][oidx][idx]
@@ -373,22 +503,25 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None):
         'cmag':cmag, 'cmagerr':cmagerr, 'tmagerr':tmagerr,
         # Model zero point for all objects, and their corrected magnitudes
         'mag0':YY1, 'mag':mag,
+        'mag_idx': mag_idx,
         'Y':Y, 'YY':YY,
         # Subset of matched stars used in the fits
         'idx':idx,
         # Subset of all objects at 'good' distances from matched ones
         'midx':midx, 'mr0':mr0, 'mr1':mr1}
 
-def fix_wcs(obj, cat, sr, header=None, maxmatch=1, order=6, fix=True):
+def fix_wcs(obj, cat, sr, header=None, use_header_wcs=False, maxmatch=1, order=6, fix=True):
     '''Get a refined WCS solution based on cross-matching of objects with catalogue on the sphere.
     Uses external 'fit-wcs' binary from Astrometry.Net suite'''
 
     if header is not None:
         width,height = header['NAXIS1'],header['NAXIS2']
-        wcs = WCS(header)
 
-        if wcs:
-            obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
+        if use_header_wcs:
+            wcs = WCS(header)
+
+            if wcs:
+                obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
     else:
         width,height = int(np.max(obj['x'])),int(np.max(obj['y']))
 
@@ -474,6 +607,108 @@ def fix_distortion(obj, cat, header=None, wcs=None, width=None, height=None, dr=
     YYy = np.sum(X*Cy.params, axis=1)
 
     obj['ra'],obj['dec'] = wcs.all_pix2world(obj['x']-YYx, obj['y']-YYy, 0)
+
+def save_objects(filename, obj, header=None, wcs=None):
+    # Create directory hierarchy as necessary
+    dirname = posixpath.split(filename)[0]
+
+    try:
+        os.makedirs(dirname)
+    except:
+        pass
+
+    if obj is None:
+        # Create dummy empty file
+        with open(filename, 'w') as f:
+            pass
+        return
+
+    header1 = fits.Header() if header is None else header.copy()
+    # Clean header from unnecessary stuff
+    header1.remove('HISTORY', ignore_missing=True, remove_all=True)
+    header1.remove('COMMENT', ignore_missing=True, remove_all=True)
+    for _ in [_ for _ in header1.keys() if _[0] == '_']:
+        header1.remove(_, ignore_missing=True, remove_all=True)
+
+    if wcs is not None:
+        header1.update(wcs.to_header(relax=True))
+
+    columns = []
+
+    meta_len = 0
+
+    for name in obj.keys():
+        # Scalar type or array?
+        is_scalar = np.isscalar(obj[name])
+        if type(obj[name]) is datetime.datetime:
+            is_scalar = True
+
+        if not np.isscalar(obj[name]) and hasattr(obj[name], '__len__') and len(obj[name]) == len(obj['x']):
+            # Add new data column
+            size = 1 if len(obj[name].shape) == 1 else obj[name].shape[1]
+            fmt = 'L' if obj[name].dtype == np.bool else 'D'
+            col = fits.Column(name=name, array=obj[name], format='%d%s' % (size,fmt))
+            columns.append(col)
+
+        else:
+            if np.isscalar(obj[name]):
+                value = obj[name]
+                vtype = 'scalar'
+            elif type(obj[name]) is datetime.datetime:
+                value = obj[name].strftime('%Y-%m-%dT%H:%M:%S.%f')
+                vtype = 'datetime'
+            else:
+                value = json.dumps(obj[name])
+                vtype = 'json'
+
+            header1['METAN%d' % meta_len] = name
+            header1['METAV%d' % meta_len] = value
+            header1['METAT%d' % meta_len] = vtype
+
+            meta_len += 1
+
+    if meta_len:
+        header1['METALEN'] = meta_len
+        header1.comments['METALEN'] = 'Number of metadata entries'
+
+    hdu1 = fits.BinTableHDU.from_columns(columns, header=header1)
+    hdu1.writeto(filename, overwrite=True)
+
+def load_objects(filename, get_header=False):
+    obj,header = None,None
+
+    try:
+        data,header = fits.getdata(filename, -1), fits.getheader(filename, -1)
+
+        obj = {}
+
+        for col in data.columns:
+            obj[col.name] = data[col.name]
+
+        for i in range(header.get('METALEN', 0)):
+            name = header.get('METAN%d' % i)
+            value = header.get('METAV%d' % i)
+            vtype = header.get('METAT%d' % i)
+
+            if vtype == 'datetime':
+                value = datetime.datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%f')
+            elif vtype == 'json':
+                value = json.loads(value)
+
+            if name:
+                obj[name] = value
+
+    except IOError:
+        pass
+    except:
+        import traceback
+        traceback.print_exc()
+
+    if get_header:
+        return obj, header
+    else:
+        return obj
+
 
 def load_results(filename):
     res = None
