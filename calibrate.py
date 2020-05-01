@@ -161,7 +161,7 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
         bias = rmean(image[-14:-4, 800:-800].flatten())
 
     elif image.shape == (2063, 2072) and header.get('BINNING') == '2x2': # The same, 2x2 binning
-        bias = rmean(image[-7:-2, 400:-400].flatten()))
+        bias = rmean(image[-7:-2, 400:-400].flatten())
 
     elif image.shape == (1026, 1062): # Overscan-enabled custom G2 on La Palma
         bias = rmean(list(image[:, -5:]))
