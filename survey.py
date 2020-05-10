@@ -5,6 +5,7 @@ import posixpath, glob, datetime, os, sys, tempfile, shutil
 
 from astropy.wcs import WCS
 from astropy.io import fits
+from astropy.stats import mad_std
 
 import warnings
 from astropy.wcs import FITSFixedWarning
@@ -14,13 +15,19 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from esutil import coords, htm
 import statsmodels.api as sm
 from scipy.spatial import cKDTree
-from scipy.signal import fftconvolve
 
 import sep
-# import cv2
 from StringIO import StringIO
 import cPickle as pickle
 import json
+
+try:
+    import cv2
+    # Much faster dilation
+    dilate = lambda image,mask: cv2.dilate(image.astype(np.uint8), mask).astype(np.bool)
+except:
+    from scipy.signal import fftconvolve
+    dilate = lambda image,mask: fftconvolve(image, mask, mode='same') > 0.9
 
 convolve = lambda x,y: fftconvolve(x, y, mode='same')
 
@@ -43,7 +50,7 @@ def get_frame_center(filename=None, header=None, wcs=None, width=None, height=No
 
     return ra0, dec0, sr
 
-def blind_match_objects(obj, order=4, extra="", verbose=False, fix=True):
+def blind_match_objects(obj, order=4, extra="", verbose=False, fix=True, sn=20):
     dir = tempfile.mkdtemp(prefix='astrometry')
     wcs = None
     binname = None
@@ -55,9 +62,10 @@ def blind_match_objects(obj, order=4, extra="", verbose=False, fix=True):
             break
 
     if binname:
-        columns = [fits.Column(name='XIMAGE', format='1D', array=obj['x']+1),
-                   fits.Column(name='YIMAGE', format='1D', array=obj['y']+1),
-                   fits.Column(name='FLUX', format='1D', array=obj['flux'])]
+        idx = obj['magerr']<1/sn
+        columns = [fits.Column(name='XIMAGE', format='1D', array=obj['x'][idx]+1),
+                   fits.Column(name='YIMAGE', format='1D', array=obj['y'][idx]+1),
+                   fits.Column(name='FLUX', format='1D', array=obj['flux'][idx])]
         tbhdu = fits.BinTableHDU.from_columns(columns)
         filename = posixpath.join(dir, 'list.fits')
         tbhdu.writeto(filename, overwrite=True)
@@ -175,10 +183,8 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
 
             ibg = bg2.back() - bg1.back()
 
-            tmp = np.abs(ibg - np.median(ibg)) > 5.0*1.4*mad(ibg)
-            # mask_bg |= cv2.dilate(tmp.astype(np.uint8), np.ones([100,100])).astype(np.bool)
-            tmp = convolve(tmp.astype(np.uint8), np.ones([30, 30]))
-            mask_bg |= tmp > 0.9
+            tmp = np.abs(ibg - np.median(ibg)) > 5.0*mad_std(ibg)
+            mask_bg |= dilate(tmp, np.ones([100,100]))
 
     if verbose:
         print("Building background map")
@@ -199,9 +205,7 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
             print("Dilating large objects")
 
         mask_segm = np.isin(segm, [_+1 for _,npix in enumerate(obj0['npix']) if npix > npix_large])
-        # mask_segm = cv2.dilate(mask_segm.astype(np.uint8), np.ones([10,10])).astype(np.bool)
-        tmp = convolve(mask_segm.astype(np.uint8), np.ones([10, 10]))
-        mask_segm = tmp > 0.9
+        mask_segm = dilate(mask_segm, np.ones([10,10]))
 
     if verbose:
         print("Extracting final objects")
@@ -240,8 +244,10 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
     bgnorm = bgflux/np.pi/aper**2
 
     # Fluxes to magnitudes
-    mag = -2.5*np.log10(flux)
-    magerr = 2.5*np.log10(1.0 + fluxerr/flux)
+    mag,magerr = np.zeros_like(flux), np.zeros_like(flux)
+    mag[flux>0] = -2.5*np.log10(flux[flux>0])
+    # magerr[flux>0] = 2.5*np.log10(1.0 + fluxerr[flux>0]/flux[flux>0])
+    magerr[flux>0] = 2.5/np.log(10)*fluxerr[flux>0]/flux[flux>0]
 
     # better FWHM estimation - FWHM=HFD for Gaussian
     # fwhm = 2.0*np.sqrt(np.hypot(obj0['a'][idx], obj0['b'][idx])*np.log(2))
@@ -267,7 +273,7 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
     if verbose:
         print("All done")
 
-    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx], 'aper':aper, 'bkgann':bkgann, 'a':obj0['a'][idx][fidx], 'b':obj0['b'][idx][fidx], 'theta':obj0['theta'][idx][fidx]}
+    return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx], 'aper':aper, 'bkgann':bkgann, 'a':obj0['a'][idx][fidx], 'b':obj0['b'][idx][fidx], 'theta':obj0['theta'][idx][fidx], 'FLUX_MAX':obj0['peak'][idx][fidx]}
 
 def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, r0=0.5, bkgann=None, gain=1, edge=0, minarea=5, wcs=None, sn=3.0, verbose=False, extra_params=[], extra_opts={}, _workdir=None, _tmpdir=None):
     # Find the binary
@@ -296,6 +302,7 @@ def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, 
         'GAIN': gain,
         'DETECT_THRESH': thresh,
         'WEIGHT_TYPE': 'BACKGROUND',
+        'MASK_TYPE': 'NONE', # both 'CORRECT' and 'BLANK' seem to cause systematics
     }
 
     if mask is None:
@@ -709,6 +716,10 @@ def load_objects(filename, get_header=False):
     else:
         return obj
 
+
+
+
+### Deprecated!
 
 def load_results(filename):
     res = None
