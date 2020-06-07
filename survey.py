@@ -275,7 +275,7 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
 
     return {'x':xwin[idx][fidx], 'y':ywin[idx][fidx], 'flux':flux[fidx], 'fluxerr':fluxerr[fidx], 'mag':mag[fidx], 'magerr':magerr[fidx], 'flags':obj0['flag'][idx][fidx]|flag[fidx], 'ra':ra[fidx], 'dec':dec[fidx], 'bg':bgflux[fidx], 'bgnorm':bgnorm[fidx], 'fwhm':fwhm[fidx], 'fwhm75':fwhm75[fidx], 'fwhm90':fwhm90[fidx], 'aper':aper, 'bkgann':bkgann, 'a':obj0['a'][idx][fidx], 'b':obj0['b'][idx][fidx], 'theta':obj0['theta'][idx][fidx], 'FLUX_MAX':obj0['peak'][idx][fidx]}
 
-def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, r0=0.5, bkgann=None, gain=1, edge=0, minarea=5, wcs=None, sn=3.0, verbose=False, extra_params=[], extra_opts={}, _workdir=None, _tmpdir=None):
+def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, r0=0.5, bkgann=None, gain=1, edge=0, minarea=5, wcs=None, sn=3.0, verbose=False, checkimages=[], extra_params=[], extra_opts={}, _workdir=None, _tmpdir=None):
     # Find the binary
     binname = None
     for path in ['.', '/usr/bin', '/usr/local/bin', '/opt/local/bin']:
@@ -313,11 +313,16 @@ def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, 
     opts['FLAG_IMAGE'] = flagsname
 
     if np.isscalar(aper):
-        opts['PHOT_APERTURES'] = aper*2
+        opts['PHOT_APERTURES'] = aper*2 # SExtractor expects diameters, not radii
         size = ''
     else:
         opts['PHOT_APERTURES'] = ','.join([str(_*2) for _ in aper])
         size = '[%d]' % len(aper)
+
+    checknames = [posixpath.join(workdir, _.replace('-', 'M_') + '.fits') for _ in checkimages]
+    if checkimages:
+        opts['CHECKIMAGE_TYPE'] = ','.join(checkimages)
+        opts['CHECKIMAGE_NAME'] = ','.join(checknames)
 
     params = ['MAG_APER'+size, 'MAGERR_APER'+size, 'FLUX_APER'+size, 'FLUXERR_APER'+size, 'X_IMAGE', 'Y_IMAGE', 'ERRX2_IMAGE', 'ERRY2_IMAGE', 'A_IMAGE', 'B_IMAGE', 'THETA_IMAGE', 'FLUX_RADIUS', 'FWHM_IMAGE', 'FLAGS', 'IMAFLAGS_ISO', 'BACKGROUND']
     params += extra_params
@@ -393,10 +398,18 @@ def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, 
         if verbose:
             print("Error", res, "running SExtractor")
 
+    result = obj
+
+    if checkimages:
+        result = [result]
+
+        for name in checknames:
+            result.append(fits.getdata(name))
+
     if _workdir is None:
         shutil.rmtree(workdir)
 
-    return obj
+    return result
 
 def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None, mag_idx=0):
     x0,y0,width,height = np.mean(obj['x']), np.mean(obj['y']), np.max(obj['x'])-np.min(obj['x']), np.max(obj['y'])-np.min(obj['y'])
