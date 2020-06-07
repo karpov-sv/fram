@@ -157,7 +157,7 @@ def mad(arr):
     med = np.median(arr)
     return np.median(np.abs(arr - med))
 
-def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=2.0, wcs=None, use_fwhm=False, use_mask_bg=False, use_mask_large=False, npix_large=100, sn=10.0, verbose=True, get_fwhm75=False, get_fwhm90=False, **kwargs):
+def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=None, r0=0.5, gain=1, edge=0, minnthresh=2, minarea=5, relfluxradius=2.0, wcs=None, use_fwhm=False, use_mask_bg=False, use_mask_large=False, subtract_bg=True, npix_large=100, sn=10.0, verbose=True, get_fwhm75=False, get_fwhm90=False, **kwargs):
     if r0 > 0.0:
         kernel = make_kernel(r0)
     else:
@@ -190,7 +190,10 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
         print("Building background map")
 
     bg = sep.Background(image, mask=mask|mask_bg, bw=64, bh=64)
-    image1 = image - bg.back()
+    if subtract_bg:
+        image1 = image - bg.back()
+    else:
+        image1 = image.copy()
 
     sep.set_extract_pixstack(image.shape[0]*image.shape[1])
 
@@ -411,7 +414,7 @@ def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, 
 
     return result
 
-def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None, mag_idx=0):
+def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None, sn=10, mag_idx=0):
     x0,y0,width,height = np.mean(obj['x']), np.mean(obj['y']), np.max(obj['x'])-np.min(obj['x']), np.max(obj['y'])-np.min(obj['y'])
 
     # Match stars
@@ -464,7 +467,11 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None, mag_i
     X = np.vstack(X).T
     Y = delta_mag
 
-    idx = (oflags == 0)
+    idx0 = (oflags == 0)
+    if sn and sn>0:
+        idx0 &= (omagerr < 1/sn)
+
+    idx = idx0.copy()
 
     for iter in range(3):
         if len(X[idx]) < 3:
@@ -474,7 +481,7 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None, mag_i
         C = sm.WLS(Y[idx], X[idx], weights=weights[idx]).fit()
 
         YY = np.sum(X*C.params,axis=1)
-        idx = (oflags == 0)
+        idx = idx0.copy()
         if thresh and thresh > 0:
             idx &= (np.abs((Y-YY)/tmagerr) < thresh)
 
