@@ -16,11 +16,9 @@ CREATE TABLE photometry (
        magerr FLOAT,
        flags INT,
        std FLOAT,
-       nstars INT
+       nstars INT,
+       fwhm FLOAT
 );
 
 CREATE INDEX ON photometry (q3c_ang2ipix(ra, dec));
-CREATE INDEX ON photometry (night);
-CREATE INDEX ON photometry (site);
-CREATE INDEX ON photometry (ccd);
-CREATE INDEX ON photometry (filter);
+CREATE INDEX ON photometry (image);

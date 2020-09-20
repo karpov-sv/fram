@@ -20,23 +20,11 @@ import astroscrappy
 import cPickle as pickle
 
 from fram import Fram, get_night, parse_iso_time
+from match import Match
 
-def store_results(filename, obj):
-    dirname = posixpath.split(filename)[0]
-
-    try:
-        os.makedirs(dirname)
-    except:
-        # import traceback
-        # traceback.print_exc()
-        pass
-
-    with open(filename, 'w') as ff:
-        pickle.dump(obj, ff)
-
-def process_file(filename, night=None, site=None, fram=None, verbose=False, replace=False):
-    if fram is None:
-        fram = Fram()
+def process_file(filename, night=None, site=None, fram=None, verbose=False, replace=False, base='photometry1'):
+    if not posixpath.exists(filename):
+        return None
 
     if site is None:
         # Simple heuristics to derive the site name
@@ -44,6 +32,10 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
             if _ in filename:
                 site = _
                 break
+
+    # Rough but fast checking of whether the file is already processed
+    if not replace and posixpath.exists(posixpath.splitext(posixpath.join(base, site, '/'.join(filename.split('/')[-4:])))[0] + '.cat'):
+        return
 
     header = fits.getheader(filename)
 
@@ -53,14 +45,15 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     ccd = header.get('CCD_NAME')
     fname = header.get('FILTER', 'unknown')
     time = parse_iso_time(header['DATE-OBS'])
+    target = header.get('TARGET', -1)
 
     if fname not in ['B', 'V', 'R', 'I', 'z', 'N']:
         return
 
     if fname == 'N' and site == 'cta-n':
-        effecive_fname = 'R'
+        effective_fname = 'R'
     else:
-        effecive_fname = fname
+        effective_fname = fname
 
     if night is None:
         if header.get('LONGITUD') is not None:
@@ -68,27 +61,47 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
         else:
             night = get_night(time, site=site)
 
-    dirname = 'photometry/%s/%s/%s' % (site, night, ccd)
+    dirname = '%s/%s/%s/%05d/%s' % (base, site, night, target, ccd)
     basename = posixpath.splitext(posixpath.split(filename)[-1])[0]
     basename = dirname + '/' + basename
+    catname = basename + '.cat'
 
-    if not replace and posixpath.exists(basename + '.pickle'):
+    if not replace and posixpath.exists(catname):
         return
 
     if verbose:
-        print(filename, site, night, ccd, fname, effecive_fname)
+        print(filename, site, night, ccd, fname, effective_fname)
 
     image = fits.getdata(filename).astype(np.double)
+
+    if fram is None:
+        fram = Fram()
 
     # Basic calibration
     darkname = fram.find_image('masterdark', header=header, debug=False)
     flatname = fram.find_image('masterflat', header=header, debug=False)
-    if not darkname or not flatname:
-        store_results(basename+'.pickle', None)
-        return
 
-    dark = fits.getdata(darkname)
-    flat = fits.getdata(flatname)
+    if darkname:
+        dark = fits.getdata(darkname)
+    else:
+        dcname = fram.find_image('dcurrent', header=header, debug=False)
+        biasname = fram.find_image('bias', header=header, debug=False)
+        if dcname and biasname:
+            bias = fits.getdata(biasname)
+            dc = fits.getdata(dcname)
+
+            dark = bias + header['EXPOSURE']*dc
+        else:
+            dark = None
+
+    if flatname:
+        flat = fits.getdata(flatname)
+    else:
+        flat = None
+
+    if dark is None or flat is None:
+        survey.save_objects(catname, None)
+        return
 
     image,header = calibrate.calibrate(image, header, dark=dark)
     image0 = image.copy()
@@ -98,52 +111,57 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     # Basic masking
     mask = image > 50000
     mask |= dark > np.median(dark) + 10.0*np.std(dark)
-#     print(np.sum(mask))
 
     cmask = np.zeros_like(mask)
 
     # WCS + catalogue
     wcs = WCS(header)
     pixscale = np.hypot(wcs.pixel_scale_matrix[0,0], wcs.pixel_scale_matrix[0,1])
-
-    ra0,dec0,sr0 = survey.get_frame_center(header=header)
-#     print(ra0, dec0, sr0, pixscale*3600)
-
-    if 'WF' in header['CCD_NAME']:
-        cat = fram.get_stars(ra0, dec0, sr0, catalog='pickles', extra=[], limit=100000)
-    else:
-        cat = fram.get_stars(ra0, dec0, sr0, catalog='atlas', extra=[], limit=100000)
-    # print(len(cat['ra']), 'stars')
-
-    # Cosmic rays
-    obj0 = survey.get_objects_sep(image, mask=mask, wcs=wcs, minnthresh=3, edge=10, use_fwhm=True, verbose=False)
     gain = header.get('GAIN', 1.0)
     if gain > 100:
         gain /= 1000
-    cmask,cimage = astroscrappy.detect_cosmics(image0, inmask=mask, gain=gain, readnoise=10, psffwhm=np.median(obj0['fwhm']), satlevel=50000, verbose=False)
-    cimage /= gain
+
+    ra0,dec0,sr0 = survey.get_frame_center(header=header)
+
+    if 'WF' in header['CCD_NAME']:
+        if header['CCD_NAME'] in ['WF6', 'WF7', 'WF8']:
+            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaia', extra=['g<15', 'good=1 and var=0 and multi_30=0'])
+        else:
+            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaia', extra=['g<15', 'good=1 and var=0 and multi_70=0'])
+
+    else:
+        cat = fram.get_stars(ra0, dec0, sr0, catalog='atlas', extra=[], limit=100000)
+
+    # Cosmic rays
+    if not 'WF' in header['CCD_NAME']:
+        obj0 = survey.get_objects_sep(image, mask=mask, wcs=wcs, minnthresh=3, edge=10, use_fwhm=True, sn=10, verbose=False)
+        cmask,cimage = astroscrappy.detect_cosmics(image0, inmask=mask, gain=gain, readnoise=10, psffwhm=np.median(obj0['fwhm']), satlevel=50000, verbose=False)
+        cimage /= gain
 
     # Object extraction
-    obj = survey.get_objects_sep(image, mask=mask|cmask, wcs=wcs, edge=3, use_fwhm=True, verbose=False)
+    if ccd == 'C0':
+        obj = survey.get_objects_sep(image, mask=mask|cmask, wcs=wcs, edge=10, aper=5, verbose=False, sn=5)
 
-    # Effective limit
-    lim = None
+    else:
+        obj = survey.get_objects_sextractor(image, mask=mask|cmask, wcs=wcs, gain=gain, edge=10, aper=3.0, minarea=3.0, r0=0, sn=3, verbose=False, _tmpdir='tmp/', extra_params=['FLUX_MAX'])
+
+    # Match with catalogue
+    match = Match(width=image.shape[1], height=image.shape[0])
     sr = pixscale*np.median(obj['fwhm'])
 
-    for iter in xrange(5):
-        match = survey.match_objects(obj, cat, sr, fname=effecive_fname, clim=lim)
-        if match is None:
-            break
-        lim = np.percentile(match['mag'], [95.0])[0] + 0.0
+    if not match.match(obj=obj, cat=cat, sr=sr, filter_name=effective_fname, order=0, bg_order=None, color_order=None, verbose=False) or match.ngoodstars < 10:
+        # if verbose:
+        #     print(match.ngoodstars, 'good matches, retrying without spatial term')
 
-        if iter > 1:
-            sr = 3.0*np.percentile(match['dist'], 65.0)
+        # if not match.match(obj=obj, cat=cat, sr=sr, filter_name=effective_fname, order=0, bg_order=None, color_order=None, verbose=False) or match.ngoodstars < 10:
+        if verbose:
+            print('Matching failed for', filename, ':', match.ngoodstars, 'good matches')
 
-    if match is None:
-        store_results(basename+'.pickle', None)
+        survey.save_objects(catname, None)
         return
 
-    # print(lim, sr*3600)
+    if verbose:
+        print(match.ngoodstars, 'good matches, std =', match.std)
 
     # Store results
     try:
@@ -151,13 +169,27 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     except:
         pass
 
-    store_results(basename+'.pickle', {'filename':filename,
-                                       'site':site, 'night':night, 'ccd':ccd, 'filter':fname,
-                                       'time':time,
-                                       'ra':obj['ra'], 'dec':obj['dec'],
-                                       'mag':match['mag'], 'magerr':obj['magerr'], 'flags':obj['flags'],
-                                       'std':np.std((match['Y']-match['YY'])[match['idx']]),
-                                       'nstars':len((match['Y']-match['YY'])[match['idx']])})
+    obj['mag_limit'] = match.mag_limit
+    obj['color_term'] = match.color_term
+
+    obj['filename'] = filename
+    obj['site'] = site
+    obj['night'] = night
+    obj['ccd'] = ccd
+    obj['filter'] = fname
+    obj['cat_filter'] = effective_fname
+    obj['time'] = time
+
+    obj['mag_id'] = match.mag_id
+
+    obj['good_idx'] = match.good_idx
+    obj['calib_mag'] = match.mag
+    obj['calib_magerr'] = match.magerr
+
+    obj['std'] = match.std
+    obj['nstars'] = match.ngoodstars
+
+    survey.save_objects(catname, obj, header=header)
 
 if __name__ == '__main__':
     from optparse import OptionParser
@@ -175,4 +207,12 @@ if __name__ == '__main__':
     for i,filename in enumerate(files):
         if len(files) > 1:
             print(i, '/', len(files), filename)
-        process_file(filename, fram=fram, verbose=options.verbose, replace=options.replace)
+        try:
+            process_file(filename, fram=fram, verbose=options.verbose, replace=options.replace)
+        except KeyboardInterrupt:
+            raise
+        except:
+            print('\nException while processing:', filename, file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            raise
