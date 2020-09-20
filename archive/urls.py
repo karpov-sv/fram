@@ -24,6 +24,7 @@ urlpatterns = [
     # Detailed image view
     url(r'^images/(?P<id>\d+)/?$', views_images.image_details, name='image_details'),
     url(r'^images/(?P<id>\d+)/download$', views_images.image_download, name='image_download'),
+    url(r'^images/(?P<id>\d+)/download/processed$', views_images.image_download, {'raw':False}, name='image_download_processed'),
     url(r'^images/(?P<id>\d+)/full$', views_images.image_preview, name='image_full'),
     url(r'^images/(?P<id>\d+)/view$', views_images.image_preview, {'size':800}, name='image_view'),
     url(r'^images/(?P<id>\d+)/preview$', views_images.image_preview, {'size':128}, name='image_preview'),

@@ -53,7 +53,7 @@ def find_calibration_image(image, type='masterdark', night=None, site=None, ccd=
     if type in ['masterflat']:
         calibs = calibs.filter(filter=image.filter)
 
-    print(type, image.site, image.ccd, image.serial, image.binning, image.keywords['NAXIS1'], image.keywords['NAXIS2'], image.filter, image.exposure)
+#    print(type, image.site, image.ccd, image.serial, image.binning, image.keywords['NAXIS1'], image.keywords['NAXIS2'], image.filter, image.exposure)
 
     calibs1 = calibs.filter(night__lte=image.night).order_by('-night')
     if calibs1.first():
@@ -101,6 +101,10 @@ def get_images(request):
     serial = request.GET.get('serial')
     if serial and serial != 'all':
         images = images.filter(serial=serial)
+
+    binning = request.GET.get('binning')
+    if binning and binning != 'all':
+        images = images.filter(binning=binning)
 
     exposure = request.GET.get('exposure')
     if exposure and exposure != 'all':
@@ -210,7 +214,11 @@ def image_details(request, id=0):
     if image.type not in ['masterdark', 'masterflat', 'bias', 'dcurrent', 'dark', 'zero']:
         context['dark'] = find_calibration_image(image, 'masterdark')
 
-        if context['dark'] and image.type not in ['flat']:
+        if context['dark'] is None:
+            context['bias'] = find_calibration_image(image, 'bias')
+            context['dcurrent'] = find_calibration_image(image, 'dcurrent')
+
+        if image.type not in ['flat']:
             context['flat'] = find_calibration_image(image, 'masterflat')
 
     try:
@@ -241,19 +249,30 @@ def image_preview(request, id=0, size=0):
 
     if not request.GET.has_key('raw'):
         if image.type not in ['masterdark', 'masterflat', 'bias', 'dcurrent']:
-            data,header = calibrate.crop_overscans(data, header)
+            dark = None
 
             if image.type not in ['dark', 'zero']:
                 cdark = find_calibration_image(image, 'masterdark')
                 if cdark is not None:
                     dark = fits.getdata(cdark.filename, -1)
-                    data -= dark
+                else:
+                    cbias,cdc = find_calibration_image(image, 'bias'), find_calibration_image(image, 'dcurrent')
+                    if cbias is not None and cdc is not None:
+                        bias = fits.getdata(cbias.filename, -1)
+                        dc = fits.getdata(cdc.filename, -1)
 
-                    if image.type not in ['flat']:
-                        cflat = find_calibration_image(image, 'masterflat')
-                        if cflat is not None:
-                            flat = fits.getdata(cflat.filename, -1)
-                            data *= np.median(flat)/flat
+                        dark = bias + image.exposure*dc
+
+            if dark is not None:
+                data,header = calibrate.calibrate(data, header, dark=dark) # Subtract dark and linearize
+
+                if image.type not in ['flat1']:
+                    cflat = find_calibration_image(image, 'masterflat')
+                    if cflat is not None:
+                        flat = fits.getdata(cflat.filename, -1)
+                        data *= np.median(flat)/flat
+            else:
+                data,header = calibrate.crop_overscans(data, header)
 
         ldata = data
     else:
@@ -277,16 +296,54 @@ def image_preview(request, id=0, size=0):
 
     return response
 
-def image_download(request, id):
+def image_download(request, id, raw=True):
     image = Images.objects.get(id=id)
 
     filename = image.filename
     filename = posixpath.join(settings.BASE_DIR, filename)
 
-    response = HttpResponse(FileResponse(file(filename)), content_type='application/octet-stream')
-    response['Content-Disposition'] = 'attachment; filename='+os.path.split(filename)[-1]
-    response['Content-Length'] = os.path.getsize(filename)
-    return response
+    if raw or image.type in ['masterdark', 'masterflat', 'dcurrent', 'bias']:
+        response = HttpResponse(FileResponse(file(filename)), content_type='application/octet-stream')
+        response['Content-Disposition'] = 'attachment; filename='+os.path.split(filename)[-1]
+        response['Content-Length'] = os.path.getsize(filename)
+        return response
+    else:
+        data = fits.getdata(filename, -1).astype(np.double)
+        header = fits.getheader(filename, -1)
+
+        if image.type not in ['masterdark', 'masterflat', 'dcurrent', 'bias']:
+            dark = None
+
+            if image.type not in ['dark', 'zero']:
+                cdark = find_calibration_image(image, 'masterdark')
+                if cdark is not None:
+                    dark = fits.getdata(cdark.filename, -1)
+                else:
+                    cbias,cdc = find_calibration_image(image, 'bias'), find_calibration_image(image, 'dcurrent')
+                    if cbias is not None and cdc is not None:
+                        bias = fits.getdata(cbias.filename, -1)
+                        dc = fits.getdata(cdc.filename, -1)
+
+                        dark = bias + image.exposure*dc
+
+            if dark is not None:
+                data,header = calibrate.calibrate(data, header, dark=dark) # Subtract dark and linearize
+
+                if image.type not in ['flat']:
+                    cflat = find_calibration_image(image, 'masterflat')
+                    if cflat is not None:
+                        flat = fits.getdata(cflat.filename, -1)
+                        data *= np.median(flat)/flat
+            else:
+                data,header = calibrate.crop_overscans(data, header)
+
+        s = StringIO()
+        fits.writeto(s, data, header)
+
+        response = HttpResponse(s.getvalue(), content_type='application/octet-stream')
+        response['Content-Disposition'] = 'attachment; filename=' + os.path.split(filename)[-1] + '.processed.fits'
+        response['Content-Length'] = len(s.getvalue())
+        return response
 
 @cache_page(3600)
 def images_nights(request):
@@ -313,16 +370,36 @@ def image_analysis(request, id=0, mode='fwhm'):
     data = fits.getdata(filename, -1).astype(np.double)
     header = fits.getheader(filename, -1)
 
+    dark = None
+    flat = None
+    
+    # Clean up the header from COMMENT and HISTORY keywords that may break things
+    header.remove('COMMENT', remove_all=True, ignore_missing=True)
+    header.remove('HISTORY', remove_all=True, ignore_missing=True)
+
     if image.type not in ['masterdark', 'masterflat', 'dcurrent', 'bias']:
-        cdark = find_calibration_image(image, 'masterdark')
-        if cdark is not None:
-            dark = fits.getdata(cdark.filename, -1)
+        if image.type not in ['dark', 'zero']:
+            cdark = find_calibration_image(image, 'masterdark')
+            if cdark is not None:
+                dark = fits.getdata(cdark.filename, -1)
+            else:
+                cbias,cdc = find_calibration_image(image, 'bias'), find_calibration_image(image, 'dcurrent')
+                if cbias is not None and cdc is not None:
+                    bias = fits.getdata(cbias.filename, -1)
+                    dc = fits.getdata(cdc.filename, -1)
+
+                    dark = bias + image.exposure*dc
+
+        if dark is not None:
             data,header = calibrate.calibrate(data, header, dark=dark) # Subtract dark and linearize
 
-            cflat = find_calibration_image(image, 'masterflat')
-            if cflat is not None:
-                flat = fits.getdata(cflat.filename, -1)
-                data *= np.median(flat)/flat
+            if image.type not in ['flat']:
+                cflat = find_calibration_image(image, 'masterflat')
+                if cflat is not None:
+                    flat = fits.getdata(cflat.filename, -1)
+                    data *= np.median(flat)/flat
+        else:
+            data,header = calibrate.crop_overscans(data, header)
 
     if mode == 'zero':
         fig = Figure(facecolor='white', dpi=72, figsize=(16,8), tight_layout=True)
@@ -341,10 +418,11 @@ def image_analysis(request, id=0, mode='fwhm'):
     elif mode == 'fwhm':
         # Detect objects and plot their FWHM
         obj = survey.get_objects_sep(data, use_fwhm=True)
+        idx = obj['flags'] == 0
 
         ax = fig.add_subplot(111)
-        utils.binned_map(obj['x'], obj['y'], obj['fwhm'], bins=16, statistic='median', ax=ax)
-        ax.set_title('%s - %s %s %s %s - half flux radius mean %.2f median %.2f pix' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, str(image.exposure), np.mean(obj['fwhm']), np.median(obj['fwhm'])))
+        utils.binned_map(obj['x'][idx], obj['y'][idx], obj['fwhm'][idx], bins=16, statistic='median', ax=ax)
+        ax.set_title('%s - %s %s %s %s - half flux diameter mean %.2f median %.2f pix' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, str(image.exposure), np.mean(obj['fwhm']), np.median(obj['fwhm'])))
 
     elif mode == 'wcs':
         # Detect objects
@@ -374,14 +452,16 @@ def image_analysis(request, id=0, mode='fwhm'):
             cidx = m[1]
             dist = m[2]*3600
 
-            ax = fig.add_subplot(111)
-            utils.binned_map(obj['x'][oidx], obj['y'][oidx], dist, show_dots=True, bins=16, statistic='median', ax=ax)
+            idx = obj['flags'][oidx] == 0
 
-            ax.set_title('%s - %s %s %s - displacement mean %.1f median %.1f arcsec pixel %.1f arcsec' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, np.mean(dist), np.median(dist), pixscale*3600))
+            ax = fig.add_subplot(111)
+            utils.binned_map(obj['x'][oidx][idx], obj['y'][oidx][idx], dist[idx], show_dots=True, bins=16, statistic='median', ax=ax)
+
+            ax.set_title('%s - %s %s %s - displacement mean %.1f median %.1f arcsec pixel %.1f arcsec' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, np.mean(dist[idx]), np.median(dist[idx]), pixscale*3600))
 
     elif mode == 'filters':
         mask = image > 30000
-        if cdark is not None:
+        if dark is not None:
             mask |= dark > np.median(dark) + 3.0*np.std(dark)
 
         wcs = WCS(header)
@@ -416,7 +496,7 @@ def image_analysis(request, id=0, mode='fwhm'):
 
     elif mode == 'zero':
         mask = image > 30000
-        if cdark is not None:
+        if dark is not None:
             mask |= dark > np.median(dark) + 3.0*np.std(dark)
 
         wcs = WCS(header)
@@ -479,17 +559,29 @@ def image_cutout(request, id=0, size=0, mode='view'):
 
     data = fits.getdata(filename, -1)
     header = fits.getheader(filename, -1)
-    data,header = calibrate.crop_overscans(data, header)
 
     cdark = find_calibration_image(image, 'masterdark')
     if cdark is not None:
         dark = fits.getdata(cdark.filename, -1)
-        data -= dark
+        if cdark is not None:
+            dark = fits.getdata(cdark.filename, -1)
+        else:
+            cbias,cdc = find_calibration_image(image, 'bias'), find_calibration_image(image, 'dcurrent')
+            if cbias is not None and cdc is not None:
+                bias = fits.getdata(cbias.filename, -1)
+                dc = fits.getdata(cdc.filename, -1)
 
-        cflat = find_calibration_image(image, 'masterflat')
-        if cflat is not None:
-            flat = fits.getdata(cflat.filename, -1)
-            data *= np.median(flat)/flat
+                dark = bias + image.exposure*dc
+            else:
+                dark = None
+
+        if dark is not None:
+            data,header = calibrate.calibrate(data, header, dark=dark) # Subtract dark and linearize
+
+            cflat = find_calibration_image(image, 'masterflat')
+            if cflat is not None:
+                flat = fits.getdata(cflat.filename, -1)
+                data *= np.median(flat)/flat
 
     ra,dec,sr = float(request.GET.get('ra')), float(request.GET.get('dec')), float(request.GET.get('sr'))
 

@@ -37,7 +37,7 @@ def search(request, mode='images'):
 
         params = {}
 
-        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist', 'filename', 'coords', 'sr_value', 'sr_units', 'magerr', 'nstars']:
+        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist', 'filename', 'coords', 'magerr', 'nstars']:
             if request.POST.get(_) and request.POST.get(_) != 'all':
                 params[_] = request.POST.get(_)
 
@@ -45,6 +45,8 @@ def search(request, mode='images'):
         if request.POST.get('sr_value'):
             sr = float(request.POST.get('sr_value', 0.1))*{'arcsec':1/3600, 'arcmin':1/60, 'deg':1}.get(request.POST.get('sr_units', 'deg'), 1)
             params['sr'] = sr
+            params['sr_value'] = request.POST.get('sr_value')
+            params['sr_units'] = request.POST.get('sr_units')
         else:
             sr = 0
         name,ra,dec = resolve(coords)

@@ -36,8 +36,7 @@
       <th>Type</th>
       <th>Exposure</th>
       <th>Target</th>
-      <th>RA</th>
-      <th>Dec</th>
+      <th>RA Dec</th>
       <th>Preview</th>
       <!-- <th></th> -->
     </tr>
@@ -64,14 +63,14 @@
           <td><a href="?{{ request.GET|GET_remove:"type"|GET_append:text|GET_urlencode }}">{{ image.type }}</a></td>
         {% endwith %}
 
-        <td>{{ image.exposure }}</td>
+        <td>{{ image.exposure }}{% if image.binning != '1x1' %} / {{ image.binning }}{% endif %}</td>
 
         {% with text="target="|addstr:image.target %}
-          <td><a href="?{{ request.GET|GET_remove:"target"|GET_append:text|GET_urlencode }}">{{ image.target }}</a></td>
+          <td><a href="?{{ request.GET|GET_remove:"target"|GET_append:text|GET_urlencode }}" title="{{ image.keywords.OBJECT }}">{{ image.target }}</a></td>
         {% endwith %}
 
-        <td>{{ image.ra|floatformat:3 }}</td>
-        <td>{{ image.dec|floatformat:3 }}</td>
+        <td title="Alt/Az {{ image.keywords.TEL_ALT }} {{ image.keywords.TEL_AZ }}">{{ image.ra|floatformat:3 }} {{ image.dec|floatformat:3 }}</td>
+
         <td><a href="{% url 'image_details' image.id %}" title="View image details">
           <img src="{% url 'image_preview' image.id %}" class="img-thumbnail">
         </a></td>

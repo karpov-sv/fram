@@ -20,6 +20,8 @@
     <a href="{% url 'image_full' image.id %}?raw=1" title="Click for a raw image"><i class="fa fa-file-image-o"></i> Raw image</a>
     <span> - </span>
     <a href="{% url 'image_download' image.id %}" title="Click to download original file"><i class="fa fa-download"></i> Download FITS</a>
+    <span> - </span>
+    <a href="{% url 'image_download_processed' image.id %}" title="Click to download processed file"><i class="fa fa-download"></i> Processed FITS</a>
     <br>
     <a href="{% url 'image_bg' image.id %}" title="Click to inspect image background" onClick="return popupImage(event, '{%  url 'image_bg' image.id %}', 'Background', true)"><i class="fa fa-map"></i> Background</a>
     <span> - </span>
@@ -38,6 +40,12 @@
 
   {% if dark %}
     <tr><td>Dark:</td><td><a href="{% url 'image_details' dark.id %}" title="View dark frame"><i class="fa fa-file-image-o"></i> {{ dark.filename }}</a></td></tr>
+  {% endif %}
+  {% if bias %}
+    <tr><td>Bias:</td><td><a href="{% url 'image_details' bias.id %}" title="View bias frame"><i class="fa fa-file-image-o"></i> {{ bias.filename }}</a></td></tr>
+  {% endif %}
+  {% if dcurrent %}
+    <tr><td>Dark current:</td><td><a href="{% url 'image_details' dcurrent.id %}" title="View dark currenr frame"><i class="fa fa-file-image-o"></i> {{ dcurrent.filename }}</a></td></tr>
   {% endif %}
   {% if flat %}
     <tr><td>Flat:</td><td><a href="{% url 'image_details' flat.id %}" title="View flat frame"><i class="fa fa-file-image-o"></i> {{ flat.filename }}</a></td></tr>
@@ -74,6 +82,11 @@
 
   <tr><td>RA:</td><td>{{image.ra}}</td></tr>
   <tr><td>Dec:</td><td>{{image.dec}}</td></tr>
+
+  {% if image.keywords.TEL_ALT %}
+  <tr><td>Alt / Az:</td><td>{{image.keywords.TEL_ALT}} {{image.keywords.TEL_AZ}}</td></tr>
+  {% endif %}
+
 </table>
 
 <!-- Full FITS header -->
