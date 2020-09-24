@@ -39,7 +39,7 @@ if __name__ == '__main__':
     s = StringIO()
     filenames = []
 
-    table = 'photometry1'
+    table = 'photometry'
 
     for i,filename in enumerate(files):
         if not options.replace and not options.ignore and posixpath.exists(filename + '.upload'):

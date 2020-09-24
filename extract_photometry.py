@@ -22,7 +22,7 @@ import cPickle as pickle
 from fram import Fram, get_night, parse_iso_time
 from match import Match
 
-def process_file(filename, night=None, site=None, fram=None, verbose=False, replace=False, base='photometry1'):
+def process_file(filename, night=None, site=None, fram=None, verbose=False, replace=False, base='photometry'):
     if not posixpath.exists(filename):
         return None
 
