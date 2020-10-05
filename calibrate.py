@@ -279,9 +279,13 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
         else:
             image = 1.0*image - dark
 
-    if linearize:
-        header = header.copy()
+    header = header.copy()
 
+    # Sanitize GAIN value from La Palma custom G2 (MICCD driver)
+    if 'GAIN' in header and header['GAIN'] > 1000:
+        header['GAIN'] = 1e-3*header['GAIN']
+
+    if linearize:
         if cfg and cfg.has_key('points'):
             points = np.array(cfg['points'])
             image = image.copy()
