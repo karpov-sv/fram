@@ -78,22 +78,22 @@ def find_calibration_config(header=None, serial=None, binning=None, width=None, 
         header = {'product_id':serial, 'BINNING':binning, 'NAXIS1':width, 'NAXIS2':height, 'DATE-OBS':date}
 
     for cfg in calibration_configs:
-        if cfg.has_key('serial') and cfg.get('serial') != header['product_id']:
+        if 'serial' in cfg and cfg.get('serial') != header['product_id']:
             continue
 
-        if cfg.has_key('binning') and cfg.get('binning') != header['BINNING']:
+        if 'binning' in cfg and cfg.get('binning') != header['BINNING']:
             continue
 
-        if cfg.has_key('width') and cfg.get('width') != header['NAXIS1']:
+        if 'width' in cfg and cfg.get('width') != header['NAXIS1']:
             continue
 
-        if cfg.has_key('height') and cfg.get('height') != header['NAXIS2']:
+        if 'height' in cfg and cfg.get('height') != header['NAXIS2']:
             continue
 
-        if cfg.has_key('date-before') and cfg.get('date-before') < header['DATE-OBS']:
+        if 'date-before' in cfg and cfg.get('date-before') < header['DATE-OBS']:
             continue
 
-        if cfg.has_key('date-after') and cfg.get('date-after') > header['DATE-OBS']:
+        if 'date-after' in cfg and cfg.get('date-after') > header['DATE-OBS']:
             continue
 
         return cfg
@@ -193,7 +193,7 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
         if cfg is None:
             cfg = find_calibration_config(header)
 
-        if cfg and cfg.has_key('airtemp_a') and cfg.has_key('airtemp_b'):
+        if cfg and 'airtemp_a' in cfg and 'airtemp_b' in cfg:
             bias = header['CCD_AIR']*cfg['airtemp_a'] + cfg['airtemp_b']
 
     if bias is not None and subtract:
@@ -286,13 +286,13 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
         header['GAIN'] = 1e-3*header['GAIN']
 
     if linearize:
-        if cfg and cfg.has_key('points'):
+        if cfg and 'points' in cfg:
             points = np.array(cfg['points'])
             image = image.copy()
             image /= interp1d(10**points[:,0], points[:,1], fill_value='extrapolate')(image)
 
         else:
-            if cfg and cfg.has_key('param1') and cfg.has_key('param2'):
+            if cfg and 'param1' in cfg and 'param2' in cfg:
                 param1, param2 = cfg['param1'], cfg['param2']
 
             else:

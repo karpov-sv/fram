@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import psycopg2, psycopg2.extras
 import datetime
 
@@ -33,13 +35,13 @@ class DB:
 
     def query(self, string="", data=(), simplify=True, debug=False, array=False):
         if self.conn.closed:
-            print "Re-connecting to DB"
+            print("Re-connecting to DB")
             self.connect(self.connstring, self.readonly)
 
         cur = self.conn.cursor(cursor_factory = psycopg2.extras.DictCursor)
 
         if debug:
-            print cur.mogrify(string, data)
+            print(cur.mogrify(string, data))
 
         if data:
             cur.execute(string, data)
@@ -83,7 +85,7 @@ class DB:
             #traceback.print_exc()
             return None
 
-    def get_stars(self, ra0=0, dec0=0, sr0=0, limit=10000, catalog='pickles', extra=[], extrafields=None):
+    def get_stars(self, ra0=0, dec0=0, sr0=0, limit=10000, catalog='pickles', extra=[], extrafields=None, debug=False):
         # Code from astrolibpy, https://code.google.com/p/astrolibpy
         strLength = 10
         __pgTypeHash = {
@@ -133,7 +135,13 @@ class DB:
             substr = "," + substr
 
         cur = self.conn.cursor(cursor_factory = psycopg2.extras.DictCursor)
-        cur.execute("SELECT * " + substr + " FROM " + catalog + " cat WHERE q3c_radial_query(ra, dec, %s, %s, %s) " + extra_str + " " + order + " LIMIT %s;", (ra0, dec0, sr0, limit))
+        string = "SELECT * " + substr + " FROM " + catalog + " cat WHERE q3c_radial_query(ra, dec, %s, %s, %s) " + extra_str + " " + order + " LIMIT %s;"
+        data = (ra0, dec0, sr0, limit)
+
+        if debug:
+            print(cur.mogrify(string, data))
+
+        cur.execute(string, data)
 
         desc = cur.description
         names = [d.name for d in desc]
@@ -158,6 +166,17 @@ class DB:
             # b = bt + 0.02927929 - 0.16965093*(bt-vt) - 0.07067606*(bt-vt)**2
             # v = vt + 0.01082083 - 0.09096735*(bt-vt)
 
+            # My cross-calibration using Gaia DR2 (see below)
+            Cb = [-0.0245864 , -0.06181789, -0.18266344,  0.0063554 ]
+            Cv = [-0.02894483,  0.05962909, -0.22627449,  0.10120628]
+            Cr = [ 0.01460373, -0.70958196,  0.10229897,  0.02253856]
+
+            bt_vt = bt - vt
+
+            b = bt + Cb[0] + Cb[1]*bt_vt + Cb[2]*bt_vt**2 + Cb[3]*bt_vt**3
+            v = vt + Cv[0] + Cv[1]*bt_vt + Cv[2]*bt_vt**2 + Cv[3]*bt_vt**3
+            r = vt + Cr[0] + Cr[1]*bt_vt + Cr[2]*bt_vt**2 + Cr[3]*bt_vt**3
+
             table = np.lib.recfunctions.append_fields(table,
                         ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr'],
                         [
@@ -168,7 +187,7 @@ class DB:
                             v,
                             # table['vt'] - 0.090*(table['bt'] - table['vt']), # V = VT -0.090*(BT-VT)
                             # R
-                            table['r'],
+                            r,
                             # I
                             table['vt'] - 0.090*(table['bt'] - table['vt']) - 1.6069*(table['j'] - table['k']) + 0.0503, # V - Ic = 1.6069 * (J - Ks) + 0.0503
                             # Berr
@@ -253,11 +272,14 @@ class DB:
         elif catalog == 'gaia':
             # Gaia DR2 data
             # My simple fit using Landolt standards
-            pB = [ 0.00827462, -0.07061174,  0.37224837,  0.66911232,  0.01612951]
-            pV = [-0.05053524,  0.27906535, -0.34027179,  0.3705785 , -0.03900042]
-            pR = [-0.03439028,  0.18250704, -0.17043058, -0.22162674,  0.0165021 ]
-            pI = [ 0.02478455, -0.16225798,  0.46062943, -1.07182209,  0.09876639]
-
+            # pB = [ 0.00827462, -0.07061174,  0.37224837,  0.66911232,  0.01612951]
+            # pV = [-0.05053524,  0.27906535, -0.34027179,  0.3705785 , -0.03900042]
+            # pR = [-0.03439028,  0.18250704, -0.17043058, -0.22162674,  0.0165021 ]
+            # pI = [ 0.02478455, -0.16225798,  0.46062943, -1.07182209,  0.09876639]
+            pB,pCB = [-0.05927724559795761, 0.4224326324292696, 0.626219707920836, -0.011211539139725953], [876.4047401692277, 5.114021693079334, -2.7332873314449326, 0]
+            pV,pCV = [0.0017624722901609662, 0.15671377090187089, 0.03123927839356175, 0.041448557506784556],[98.03049528983964, 20.582521666713028, 0.8690079603974803, 0]
+            pR,pCR = [0.02045449129406191, 0.054005149296716175, -0.3135475489352255, 0.020545083667168156], [347.42190542330945, 39.42482430363565, 0.8626828845232541, 0]
+            pI,pCI = [0.005092289380850884, 0.07027022935721515, -0.7025553064161775, -0.02747532184796779], [79.4028706486939, 9.176899238787003, -0.7826315256072135, 0]
             g = table['g']
             bp_rp = table['bp'] - table['rp']
 
@@ -268,10 +290,12 @@ class DB:
             gcorr[g>16] = g[g>16] - 0.032
             g = gcorr
 
-            B = g + np.polyval(pB, bp_rp)
-            V = g + np.polyval(pV, bp_rp)
-            R = g + np.polyval(pR, bp_rp)
-            I = g + np.polyval(pI, bp_rp)
+            Cstar = table['bp_rp_excess'] - np.polyval([-0.00445024,  0.0570293,  -0.02810592,  1.20477819], bp_rp)
+
+            B = g + np.polyval(pB, bp_rp) + np.polyval(pCB, Cstar)
+            V = g + np.polyval(pV, bp_rp) + np.polyval(pCV, Cstar)
+            R = g + np.polyval(pR, bp_rp) + np.polyval(pCR, Cstar)
+            I = g + np.polyval(pI, bp_rp) + np.polyval(pCI, Cstar)
 
             err = np.sqrt(3)*table['dg']
 
@@ -289,4 +313,36 @@ class DB:
                         ],
                         [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
 
+        elif catalog == 'gaiaedr3':
+            # Gaia EDR3 data
+            # My simple fit using Landolt standards
+            pB,pCB = [-1.10797403e-01,  5.05107200e-01,  6.08461421e-01, -2.29323596e-03], -7.10179154
+            pV,pCV = [-0.00815956,  0.18593159,  0.02125959,  0.01791784],  0.25652809
+            pR,pCR = [0.02395484,  0.05862712, -0.32681951,  0.0100306],   2.00476047
+            pI,pCI = [-5.58513407e-04,  9.78202588e-02, -7.53451026e-01, -1.12096873e-02], -1.22532996
+
+            g = table['g']
+            bp_rp = table['bp'] - table['rp']
+            bp_rp_excess = table['bp_rp_excess']
+
+            B = g + np.polyval(pB, bp_rp) + pCB*bp_rp_excess
+            V = g + np.polyval(pV, bp_rp) + pCV*bp_rp_excess
+            R = g + np.polyval(pR, bp_rp) + pCR*bp_rp_excess
+            I = g + np.polyval(pI, bp_rp) + pCI*bp_rp_excess
+
+            err = np.sqrt(3)*table['dg']
+
+            table = np.lib.recfunctions.append_fields(table,
+                        ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr'],
+                        [
+                            B,
+                            V,
+                            R,
+                            I,
+                            err,
+                            err,
+                            err,
+                            err,
+                        ],
+                        [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
         return table

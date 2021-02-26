@@ -17,8 +17,6 @@ import statsmodels.api as sm
 from scipy.spatial import cKDTree
 
 import sep
-from StringIO import StringIO
-import cPickle as pickle
 import json
 
 try:
@@ -125,12 +123,12 @@ def make_series(mul=1.0, x=1.0, y=1.0, order=1, sum=False, legendre=False, zero=
     else:
         res = []
 
-    for i in xrange(1,order+1):
+    for i in range(1,order+1):
         maxr = i+1
         if legendre:
             maxr = order+1
 
-        for j in xrange(maxr):
+        for j in range(maxr):
             #print i, '-', i - j, j
             if legendre:
                 res.append(mul * leg(i)(x) * leg(j)(y))
@@ -147,6 +145,35 @@ def make_kernel(r0=1.0, ext=1.0):
     image = np.exp(-r**2/2/r0**2)
 
     return image
+
+def fit_2d(x, y, z, x0, y0, weights=None, order=4, niter=3):
+    # Fit
+    sx = (x - np.mean(x))/np.max(x)
+    sy = (y - np.mean(y))/np.max(y)
+
+    X = make_series(1.0, sx, sy, order=order)
+    X = np.vstack(X).T
+    Y = z
+
+    idx = np.isfinite(Y)
+
+    for i in range(niter):
+        if weights is not None:
+            C = sm.WLS(Y[idx], X[idx], weights=weights[idx]).fit()
+        else:
+            C = sm.RLM(Y[idx], X[idx]).fit()
+
+        YY = np.sum(X*C.params, axis=1)
+        idx = np.abs(Y-YY - np.median((Y-YY)[idx])) < 3.0*mad_std((Y-YY)[idx])
+
+    # Predict
+    sx = (x0 - np.mean(x))/np.max(x)
+    sy = (y0 - np.mean(y))/np.max(y)
+
+    X = make_series(1.0, sx, sy, order=order)
+    X = np.vstack(X).T
+
+    return np.sum(X*C.params, axis=1)
 
 def mad(arr):
     """ Median Absolute Deviation: a "Robust" version of standard deviation.
@@ -177,7 +204,7 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
         if verbose:
             print("Masking rapidly changing background")
 
-        for _ in xrange(3):
+        for _ in range(3):
             bg1 = sep.Background(image, mask=mask|mask_bg, bw=256, bh=256)
             bg2 = sep.Background(image, mask=mask|mask_bg, bw=32, bh=32)
 
@@ -446,7 +473,7 @@ def match_objects(obj, cat, sr, fname='V', order=4, thresh=5.0, clim=None, sn=10
     if clim is not None:
         idx = cmag < clim
 
-        oidx,cidx,dist,cmag,cmagerr = [_[idx] for _ in oidx,cidx,dist,cmag,cmagerr]
+        oidx,cidx,dist,cmag,cmagerr = [_[idx] for _ in [oidx,cidx,dist,cmag,cmagerr]]
 
     x,y = obj['x'][oidx],obj['y'][oidx]
     oflags = obj['flags'][oidx]
@@ -612,8 +639,8 @@ def fix_distortion(obj, cat, header=None, wcs=None, width=None, height=None, dr=
     nm = np.array([len(_) for _ in m])
 
     # Distortions
-    dx = np.array([obj['x'][_] - xc[m[_][0]] if nm[_] == 1 else 0 for _ in xrange(len(m))])
-    dy = np.array([obj['y'][_] - yc[m[_][0]] if nm[_] == 1 else 0 for _ in xrange(len(m))])
+    dx = np.array([obj['x'][_] - xc[m[_][0]] if nm[_] == 1 else 0 for _ in range(len(m))])
+    dy = np.array([obj['y'][_] - yc[m[_][0]] if nm[_] == 1 else 0 for _ in range(len(m))])
 
     # Normalized coordinates
     x = (obj['x'] - width/2)*2.0/width
@@ -735,36 +762,3 @@ def load_objects(filename, get_header=False):
         return obj, header
     else:
         return obj
-
-
-
-
-### Deprecated!
-
-def load_results(filename):
-    res = None
-    with open(filename, 'r') as ff:
-        res = pickle.load(ff)
-    return res
-
-def store_results(filename, obj):
-    dirname = posixpath.split(filename)[0]
-
-    try:
-        os.makedirs(dirname)
-    except:
-        pass
-
-    with open(filename, 'w') as ff:
-        pickle.dump(obj, ff)
-
-def store_wcs(filename, wcs):
-    dirname = posixpath.split(filename)[0]
-
-    try:
-        os.makedirs(dirname)
-    except:
-        pass
-
-    hdu = fits.PrimaryHDU(header=wcs.to_header(relax=True))
-    hdu.writeto(filename, overwrite=True)
