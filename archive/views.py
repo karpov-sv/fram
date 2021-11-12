@@ -25,7 +25,7 @@ def index(request):
 
     return TemplateResponse(request, 'index.html', context=context)
 
-@cache_page(3600)
+#@cache_page(3600)
 @csrf_protect
 def search(request, mode='images'):
     context = {}
@@ -37,7 +37,7 @@ def search(request, mode='images'):
 
         params = {}
 
-        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist', 'filename', 'coords', 'magerr', 'nstars']:
+        for _ in ['site', 'type', 'ccd', 'filter', 'night1', 'night2', 'serial', 'target', 'maxdist', 'filename', 'coords', 'magerr', 'nstars', 'nofiltering']:
             if request.POST.get(_) and request.POST.get(_) != 'all':
                 params[_] = request.POST.get(_)
 
@@ -89,19 +89,24 @@ def search(request, mode='images'):
         context.update(params)
 
     # Possible values for fields
-    types = Images.objects.distinct('type').values('type')
+    # types = Images.objects.distinct('type').values('type')
+    types = db_query("select fast_distinct(%s, %s) as type", ('images', 'type'))
     context['types'] = types
 
-    sites = Images.objects.distinct('site').values('site')
+    # sites = Images.objects.distinct('site').values('site')
+    sites = db_query("select fast_distinct(%s, %s) as site", ('images', 'site'))
     context['sites'] = sites
 
-    ccds = Images.objects.distinct('ccd').values('ccd')
+    # ccds = Images.objects.distinct('ccd').values('ccd')
+    ccds = db_query("select fast_distinct(%s, %s) as ccd", ('images', 'ccd'))
     context['ccds'] = ccds
 
-    serials = Images.objects.distinct('serial').values('serial')
+    # serials = Images.objects.distinct('serial').values('serial')
+    serials = db_query("select fast_distinct(%s, %s, 0) as serial", ('images', 'serial'))
     context['serials'] = serials
 
-    filters = Images.objects.distinct('filter').values('filter')
+    # filters = Images.objects.distinct('filter').values('filter')
+    filters = db_query("select fast_distinct(%s, %s) as filter", ('images', 'filter'))
     context['filters'] = filters
 
     if mode == 'cutouts':

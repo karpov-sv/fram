@@ -82,6 +82,7 @@ class Photometry(models.Model):
     mag = models.FloatField(blank=True, null=True)
     magerr = models.FloatField(blank=True, null=True)
     flags = models.FloatField(blank=True, null=True)
+    fwhm = models.FloatField(blank=True, null=True)
     std = models.FloatField(blank=True, null=True)
     nstars = models.FloatField(blank=True, null=True)
 

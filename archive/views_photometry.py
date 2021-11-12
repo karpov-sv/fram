@@ -13,6 +13,7 @@ import numpy as np
 import json
 
 from astropy.time import Time
+from astropy.stats import mad_std
 
 from .models import Photometry
 
@@ -98,6 +99,7 @@ def lc(request, mode="jpg", size=800):
     mags = np.array([_.mag for _ in lc])
     magerrs = np.array([_.magerr for _ in lc])
     flags = np.array([_.flags for _ in lc])
+    fwhms = np.array([_.fwhm for _ in lc])
     stds = np.array([_.std for _ in lc])
     nstars = np.array([_.nstars for _ in lc])
 
@@ -110,7 +112,47 @@ def lc(request, mode="jpg", size=800):
     sr = float(request.GET.get('sr', 0.01))
     name = request.GET.get('name')
 
-    title = '%s - %.4f %.3f %.3f' % (request.GET.get('name'), ra, dec, sr)
+    if name in ['sexadecimal', 'degrees']:
+        name = None
+
+    if request.GET.get('nofiltering'):
+        filtering = False
+    else:
+        filtering = True
+
+    # Quality cuts
+    idx0 = np.ones_like(mags, dtype=np.bool)
+    if filtering:
+        mask = np.zeros_like(mags, dtype=np.bool)
+
+        idx0 &= flags < 2
+
+        for fn in np.unique(filters):
+            idx = idx0 & (filters == fn)
+
+            for _ in range(3):
+                idx &= stds < np.median(stds[idx]) + 3.0*mad_std(stds[idx])
+
+            for _ in range(3):
+                idx &= fwhms < np.median(fwhms[idx]) + 3.0*mad_std(fwhms[idx])
+
+            mask |= idx
+
+        idx0 = mask
+
+    context = {}
+
+    context['ra'] = ra
+    context['dec'] = dec
+    context['sr'] = sr
+    context['filtering'] = filtering
+
+    if name:
+        title = '%s - ' % name
+    else:
+        title = ''
+
+    title += '%.4f %.3f %.3f - %d pts' % (ra, dec, sr, len(mags))
 
     xi,eta = radectoxieta(ras, decs, ra, dec)
     xi *= 3600
@@ -118,24 +160,15 @@ def lc(request, mode="jpg", size=800):
 
     if mode == 'jpeg':
         # Plot lc
-        context = {}
-
-        context['ra'] = float(request.GET.get('ra'))
-        context['dec'] = float(request.GET.get('dec'))
-        context['sr'] = float(request.GET.get('sr', 0.01))
-
         fig = Figure(facecolor='white', dpi=72, figsize=(size/72,0.5*size/72), tight_layout=True)
         ax = fig.add_subplot(111)
         ax.grid(True, alpha=0.1, color='gray')
 
         for fn in np.unique(filters):
-            idx = (filters == fn) & (flags == 0)
+            idx = idx0 & (filters == fn)
 
             if len(mags[idx]) < 2:
                 continue
-
-            idx &= np.abs(stds - rmean(stds[idx])) < 5.0*rstd(stds[idx])
-            # idx &= lens > rmean(lens[idx]) - 5.0*rstd(lens[idx])
 
             ax.errorbar(times[idx], mags[idx], magerrs[idx], fmt='.', color=cols[idx][0], capsize=0, alpha=0.3)
             ax.scatter(times[idx], mags[idx], marker='.', c=cols[idx][0])
@@ -156,20 +189,17 @@ def lc(request, mode="jpg", size=800):
         lcs = []
 
         for fn in np.unique(filters):
-            idx = (filters == fn) & (flags == 0)
+            idx = idx0 & (filters == fn)
 
             if len(mags[idx]) < 2:
                 continue
-
-            idx &= np.abs(stds - rmean(stds[idx])) < 5.0*rstd(stds[idx])
-            # idx &= lens > rmean(lens[idx]) - 5.0*rstd(lens[idx])
 
             times_idx = [_.isoformat() for _ in times[idx]]
 
             lcs.append({'filter': fn, 'color': cols[idx][0],
                         'times': times_idx, 'mjds': list(mjds[idx]), 'xi': list(xi[idx]), 'eta': list(eta[idx]),
                         'mags': list(mags[idx]), 'magerrs': list(magerrs[idx]), 'flags': list(flags[idx]),
-                        'stds': list(stds[idx]), 'nstars': list(nstars[idx])})
+                        'fwhms': list(fwhms[idx]), 'stds': list(stds[idx]), 'nstars': list(nstars[idx])})
 
         data = {'name': name, 'title': title, 'ra': ra, 'dec': dec, 'sr': sr, 'lcs': lcs}
 
@@ -180,10 +210,10 @@ def lc(request, mode="jpg", size=800):
 
         response['Content-Disposition'] = 'attachment; filename=lc_full_%s_%s_%s.txt' % (ra, dec, sr)
 
-        print('# Date Time MJD Site CCD Filter Mag Magerr Flags Std Nstars', file=response)
+        print('# Date Time MJD Site CCD Filter Mag Magerr Flags FWHM Std Nstars', file=response)
 
         for _ in xrange(len(times)):
-            print(times[_], mjds[_], sites[_], ccds[_], filters[_], mags[_], magerrs[_], flags[_], stds[_], nstars[_], file=response)
+            print(times[_], mjds[_], sites[_], ccds[_], filters[_], mags[_], magerrs[_], flags[_], fwhms[_], stds[_], nstars[_], file=response)
 
         return response
 
@@ -192,12 +222,22 @@ def lc(request, mode="jpg", size=800):
 
         response['Content-Disposition'] = 'attachment; filename=lc_mjd_%s_%s_%s.txt' % (ra, dec, sr)
 
-        print('# MJD Mag Magerr', file=response)
+        if len(np.unique(filters)) == 1:
+            single = True
+        else:
+            single = False
 
-        idx = (flags == 0)
-        idx &= np.abs(stds - rmean(stds[idx])) < 5.0*rstd(stds[idx])
+        if single:
+            print('# MJD Mag Magerr', file=response)
+        else:
+            print('# MJD Mag Magerr Filter', file=response)
+
+        idx = idx0
 
         for _ in xrange(len(times[idx])):
-            print(mjds[idx][_], mags[idx][_], magerrs[idx][_], file=response)
+            if single:
+                print(mjds[idx][_], mags[idx][_], magerrs[idx][_], file=response)
+            else:
+                print(mjds[idx][_], mags[idx][_], magerrs[idx][_], filters[idx][_], file=response)
 
         return response
