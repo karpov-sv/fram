@@ -17,8 +17,12 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from skimage.transform import rescale
-from StringIO import StringIO
-from esutil import htm
+try:
+    # python2
+    from StringIO import StringIO
+except ImportError:
+    # python3
+    from io import StringIO
 
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -28,10 +32,10 @@ from .utils import permission_required_or_403
 from . import settings
 
 # FRAM modules
-from .fram import calibrate
-from .fram import survey
-from .fram import utils
-from .fram.fram import Fram, parse_iso_time, get_night
+from fram import calibrate
+from fram import survey
+from fram import utils
+from fram.fram import Fram, parse_iso_time, get_night
 
 # TODO: memoize the result
 def find_calibration_image(image, type='masterdark', night=None, site=None, ccd=None, serial=None, exposure=None, cropped_width=None, cropped_height=None, filter=None, binning=None):
@@ -244,10 +248,10 @@ def image_preview(request, id=0, size=0):
     data = fits.getdata(filename, -1)
     header = fits.getheader(filename, -1)
 
-    if request.GET.has_key('size'):
+    if 'size' in request.GET:
         size = int(request.GET.get('size', 0))
 
-    if not request.GET.has_key('raw'):
+    if not 'raw' in request.GET:
         if image.type not in ['masterdark', 'masterflat', 'bias', 'dcurrent']:
             dark = None
 
@@ -372,7 +376,7 @@ def image_analysis(request, id=0, mode='fwhm'):
 
     dark = None
     flat = None
-    
+
     # Clean up the header from COMMENT and HISTORY keywords that may break things
     header.remove('COMMENT', remove_all=True, ignore_missing=True)
     header.remove('HISTORY', remove_all=True, ignore_missing=True)

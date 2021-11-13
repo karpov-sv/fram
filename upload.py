@@ -14,9 +14,9 @@ warnings.simplefilter('ignore', FITSFixedWarning)
 
 from esutil import coords
 
-from calibrate import crop_overscans
+from fram.calibrate import crop_overscans
 
-from fram import Fram, get_night, parse_iso_time
+from fram.fram import Fram, get_night, parse_iso_time
 
 def process_file(filename, night=None, site=None, fram=None, verbose=False):
     if fram is None:
@@ -171,18 +171,6 @@ if __name__ == '__main__':
 
     (options,args) = parser.parse_args()
 
-    dirs = args
-
-    if not dirs:
-        dirs = glob.glob('/mnt/data0/auger/2*/*')
-        dirs += glob.glob('/mnt/data0/cta-n/2*/*')
-        dirs += glob.glob('/mnt/data2/cta-s0/2*/*')
-        dirs += glob.glob('/mnt/data2/cta-s1/2*/*')
-
-    dirs.sort(reverse=True)
-
-    print(len(dirs), "dirs")
-
     if options.process_files:
         # Process single files
         fram = Fram()
@@ -201,6 +189,18 @@ if __name__ == '__main__':
 
     else:
         # Process directories
+        dirs = args
+
+        # if not dirs:
+        #     dirs = glob.glob('/mnt/data0/auger/2*/*')
+        #     dirs += glob.glob('/mnt/data0/cta-n/2*/*')
+        #     dirs += glob.glob('/mnt/data2/cta-s0/2*/*')
+        #     dirs += glob.glob('/mnt/data2/cta-s1/2*/*')
+
+        dirs.sort(reverse=True)
+
+        print(len(dirs), "dirs")
+
         if options.nthreads > 1:
             import multiprocessing
             from functools import partial

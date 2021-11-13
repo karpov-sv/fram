@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 from astropy.io import fits
 import sys, glob, re
 
@@ -12,7 +14,7 @@ if __name__ == '__main__':
     (options,args) = parser.parse_args()
 
     for filename in args:
-        print filename
+        print(filename)
 
         fn = fits.open(filename, mode='update')
         header = fn[0].header

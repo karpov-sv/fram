@@ -7,8 +7,8 @@ import posixpath, glob, sys
 
 from astropy.io import fits
 
-from resolve import resolve
-from fram import Fram
+from fram.resolve import resolve
+from fram.fram import Fram
 
 if __name__ == '__main__':
     from optparse import OptionParser

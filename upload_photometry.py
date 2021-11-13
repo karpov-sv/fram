@@ -9,8 +9,8 @@ import posixpath, glob, sys
 
 from StringIO import StringIO
 
-from fram import Fram, get_night, parse_iso_time
-import survey
+from fram.fram import Fram, get_night, parse_iso_time
+from fram import survey
 
 def touch(filename):
     with open(filename, 'a'):

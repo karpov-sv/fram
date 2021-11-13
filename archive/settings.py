@@ -44,7 +44,7 @@ INSTALLED_APPS = [
     'archive',
     'archive.templatetags.filters',
     'debug_toolbar',
-    'debug_toolbar_line_profiler',
+    # 'debug_toolbar_line_profiler',
 ]
 
 MIDDLEWARE = [
@@ -72,7 +72,7 @@ DEBUG_TOOLBAR_PANELS = [
     'debug_toolbar.panels.signals.SignalsPanel',
     'debug_toolbar.panels.logging.LoggingPanel',
     'debug_toolbar.panels.redirects.RedirectsPanel',
-    'debug_toolbar_line_profiler.panel.ProfilingPanel',
+    # 'debug_toolbar_line_profiler.panel.ProfilingPanel',
 ]
 
 ROOT_URLCONF = 'archive.urls'
@@ -103,7 +103,7 @@ WSGI_APPLICATION = 'archive.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'NAME': os.path.join(BASE_DIR, 'archive/db.sqlite3'),
     },
     # Observational data db, should not be used for Django objects
     'fram': {
@@ -111,7 +111,7 @@ DATABASES = {
         'NAME': 'fram',                      # Or path to database file if using sqlite3.
         # 'USER': 'karpov',                      # Not used with sqlite3.
         'PASSWORD': '',                  # Not used with sqlite3.
-        'HOST': '',                      # Set to empty string for localhost. Not used with sqlite3.
+        'HOST': 's104.fzu.cz',                      # Set to empty string for localhost. Not used with sqlite3.
         'PORT': '',                      # Set to empty string for default. Not used with sqlite3.
     }
 }
@@ -164,10 +164,7 @@ USE_TZ = False
 STATIC_URL = '/static/'
 
 # Add all local variables to template context
-_context = {}
-local_context = locals()
-for (k,v) in local_context.items():
-    _context[k] = str(v)
+_context = {k:str(v) for (k,v) in locals().items()}
 
 def settings_context(context):
     return _context

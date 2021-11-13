@@ -20,7 +20,7 @@ from .models import Photometry
 from .fram.calibrate import rstd,rmean
 
 def radectoxieta(ra, dec, ra0=0, dec0=0):
-    ra,dec = [np.asarray(_) for _ in ra,dec]
+    ra,dec = [np.asarray(_) for _ in (ra,dec)]
     delta_ra = np.asarray(ra - ra0)
 
     delta_ra[(ra < 10) & (ra0 > 350)] += 360

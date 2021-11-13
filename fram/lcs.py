@@ -9,7 +9,7 @@ from scipy.spatial import cKDTree
 
 from supersmoother import SuperSmoother
 
-import survey, calibrate
+from . import survey, calibrate
 
 class LCs:
     def __init__(self):

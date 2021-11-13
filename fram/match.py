@@ -6,7 +6,7 @@ from esutil import coords, htm
 import statsmodels.api as sm
 from scipy.spatial import cKDTree
 
-from survey import make_series
+from .survey import make_series
 
 class Match:
     def __init__(self, width=None, height=None):

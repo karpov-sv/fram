@@ -15,12 +15,12 @@ from astropy.wcs import FITSFixedWarning
 warnings.simplefilter(action='ignore', category=FITSFixedWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-import survey, calibrate
+from fram import survey, calibrate
 import astroscrappy
 import cPickle as pickle
 
-from fram import Fram, get_night, parse_iso_time
-from match import Match
+from fram.fram import Fram, get_night, parse_iso_time
+from fram.match import Match
 
 def process_file(filename, night=None, site=None, fram=None, verbose=False, replace=False, base='photometry'):
     if not posixpath.exists(filename):
