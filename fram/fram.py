@@ -95,7 +95,10 @@ class Fram(DB):
         if full:
             return res[0] if len(res) else None
         else:
-            return res[0]['filename'] if len(res) else None
+            filename = res[0]['filename'] if len(res) else None
+            if debug:
+                print('find_image:', res[0]['filename'] if len(res) else None)
+            return filename
 
     # Convenience
     def parse_iso_time(self, string=None, header=None):

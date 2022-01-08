@@ -3,6 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import psycopg2, psycopg2.extras
 import numpy as np
 
+from astropy.table import Table
+
 class DB:
     """Class encapsulating the connection to PostgreSQL database"""
     def __init__(self, dbname='fram', dbhost='', dbport=0, dbuser='', dbpassword='', readonly=False):
@@ -29,15 +31,20 @@ class DB:
         self.connstring = connstring
         self.readonly = readonly
 
-    def query(self, string="", data=(), simplify=True, debug=False, array=False):
+    def query(self, string="", data=(), table=True, simplify=True, verbose=False, debug=False):
+        if debug:
+            verbose = True
+
+        log = (verbose if callable(verbose) else print) if verbose else lambda *args,**kwargs: None
+
         if self.conn.closed:
-            print("Re-connecting to DB")
+            log("DB connection is closed, re-connecting")
             self.connect(self.connstring, self.readonly)
 
         cur = self.conn.cursor(cursor_factory = psycopg2.extras.DictCursor)
 
-        if debug:
-            print(cur.mogrify(string, data))
+        if verbose or debug:
+            log('Sending DB query:', cur.mogrify(string, data))
 
         if data:
             cur.execute(string, data)
@@ -46,10 +53,10 @@ class DB:
 
         try:
             result = cur.fetchall()
-            # Simplify the result if it is simple
-            if array:
+
+            if table:
                 # Code from astrolibpy, https://code.google.com/p/astrolibpy
-                strLength = 10
+                strLength = 256
                 __pgTypeHash = {
                     16:bool,18:str,20:'i8',21:'i2',23:'i4',25:'|S%d'%strLength,700:'f4',701:'f8',
                     1042:'|S%d'%strLength,#character()
@@ -62,19 +69,31 @@ class DB:
                 names = [d.name for d in desc]
                 formats = [__pgTypeHash.get(d.type_code, '|O') for d in desc]
 
+                # table = np.recarray(shape=(cur.rowcount,), formats=formats, names=names)
                 table = np.recarray(shape=(cur.rowcount,), formats=formats, names=names)
 
                 for i,v in enumerate(result):
                     table[i] = tuple(v)
 
+                table = Table(table)
+                log('DB reply: table with %d rows and %d columns' % (len(table), len(table.columns)))
+
                 return table
+
             elif simplify and len(result) == 1:
+                # Simplify the result if it is simple
                 if len(result[0]) == 1:
+                    log('DB reply:', result[0][0])
                     return result[0][0]
                 else:
+                    log('DB reply:', result[0])
                     return result[0]
             else:
                 return result
+
+        except KeyboardInterrupt:
+            raise
+
         except:
             # Nothing returned from the query
             #import traceback
@@ -82,37 +101,8 @@ class DB:
             return None
 
     def get_stars(self, ra0=0, dec0=0, sr0=0, limit=10000, catalog='pickles', extra=[], extrafields=None, debug=False):
-        # Code from astrolibpy, https://code.google.com/p/astrolibpy
-        strLength = 10
-        __pgTypeHash = {
-            16:bool,18:str,20:'i8',21:'i2',23:'i4',25:'|S%d'%strLength,700:'f4',701:'f8',
-            1042:'|S%d'%strLength,#character()
-            1043:'|S%d'%strLength,#varchar
-            1114:'|O',#datetime
-            1700:'f8' #numeric
-        }
-
-        substr = ""
-
-        if catalog == 'tycho2':
-            substr = "0.76*bt+0.24*vt as b , 1.09*vt-0.09*bt as v, 0 as r"
-
-        # TODO: Do we really need brightess ordered output?..
-        order = ""
-        if False:
-            if catalog in ['tycho2', 'apass', 'pickles']:
-                order = "ORDER BY v"
-            elif catalog in ['twomass']:
-                order = "ORDER BY j"
-            elif catalog in ['atlas']:
-                order = "ORDER BY g"
-
-        # if catalog == 'gaia':
-        #     if extra and type(extra) == str:
-        #         extra = [extra]
-        #     elif not extra:
-        #         extra = []
-        #     extra += ["lum > 0.3 AND lum < 30 AND bp_rp_excess > 1.0 + 0.015*bp_rp*bp_rp AND bp_rp_excess < 1.3 + 0.06*bp_rp*bp_rp "]
+        """
+        """
 
         if extra and type(extra) == list:
             extra_str = " AND " + " AND ".join(extra)
@@ -121,35 +111,19 @@ class DB:
         else:
             extra_str = ""
 
-        if extrafields:
-            if substr:
-                substr = substr + "," + extrafields
-            else:
-                substr = extrafields
+        # Query string, assuming we have Q3C-indexed ra and dec columns
+        string = "SELECT * FROM " + catalog + " WHERE q3c_radial_query(ra, dec, %s, %s, %s) " + extra_str + " LIMIT %s;"
 
-        if substr:
-            substr = "," + substr
-
-        cur = self.conn.cursor(cursor_factory = psycopg2.extras.DictCursor)
-        string = "SELECT * " + substr + " FROM " + catalog + " cat WHERE q3c_radial_query(ra, dec, %s, %s, %s) " + extra_str + " " + order + " LIMIT %s;"
         data = (ra0, dec0, sr0, limit)
 
-        if debug:
-            print(cur.mogrify(string, data))
-
-        cur.execute(string, data)
-
-        desc = cur.description
-        names = [d.name for d in desc]
-        formats = [__pgTypeHash.get(d.type_code, '|O') for d in desc]
-
-        table = np.recarray(shape=(cur.rowcount,), formats=formats, names=names)
-
-        for i,v in enumerate(cur.fetchall()):
-            table[i] = tuple(v)
+        table = self.query(string, data)
 
         # Add some computed fields to the table
-        if catalog == 'pickles':
+        if catalog == 'tycho2':
+            table['B'] = 0.76*table['bt'] + 0.24*table['vt']
+            table['V'] = 1.09*table['vt'] - 0.09*table['bt']
+
+        elif catalog == 'pickles':
             # Pickles - has computed B, V, R and measured J, H, K, Bt, Vt
             bt = table['bt']
             vt = table['vt']
@@ -173,29 +147,18 @@ class DB:
             v = vt + Cv[0] + Cv[1]*bt_vt + Cv[2]*bt_vt**2 + Cv[3]*bt_vt**3
             r = vt + Cr[0] + Cr[1]*bt_vt + Cr[2]*bt_vt**2 + Cr[3]*bt_vt**3
 
-            table = np.lib.recfunctions.append_fields(table,
-                        ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr'],
-                        [
-                            # B
-                            b,
-                            # 0.760*table['bt'] + 0.240*table['vt'], # B = 0.76*BT+0.24*VT
-                            # V
-                            v,
-                            # table['vt'] - 0.090*(table['bt'] - table['vt']), # V = VT -0.090*(BT-VT)
-                            # R
-                            r,
-                            # I
-                            table['vt'] - 0.090*(table['bt'] - table['vt']) - 1.6069*(table['j'] - table['k']) + 0.0503, # V - Ic = 1.6069 * (J - Ks) + 0.0503
-                            # Berr
-                            np.hypot(table['ebt'], table['evt']),
-                            # Verr
-                            np.hypot(table['ebt'], table['evt']),
-                            # Rerr
-                            np.hypot(table['ebt'], table['evt']),
-                            # Ierr
-                            np.hypot(table['ebt'], table['evt']),
-                        ],
-                        [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
+            table['B'] = b
+            table['Berr'] = np.hypot(table['ebt'], table['evt'])
+
+            table['V'] = v
+            table['Verr'] = np.hypot(table['ebt'], table['evt'])
+
+            table['R'] = r
+            table['Rerr'] = np.hypot(table['ebt'], table['evt'])
+
+            # V - Ic = 1.6069 * (J - Ks) + 0.0503
+            table['I'] = table['vt'] - 0.090*(table['bt'] - table['vt']) - 1.6069*(table['j'] - table['k']) + 0.0503
+            table['Ierr'] = np.hypot(table['ebt'], table['evt'])
 
         elif catalog == 'apass':
             # APASS - has measured B, V, g', r', i'
@@ -204,27 +167,19 @@ class DB:
             r = table['r'] + 0.035*(table['r']-table['i'] - 0.21)
             i = table['i'] + 0.041*(table['r']-table['i'] - 0.21)
 
-            table = np.lib.recfunctions.append_fields(table,
-                        ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr'],
-                        [
-                            # B
-                            table['b'],
-                            # V
-                            table['v'],
-                            # R
-                            table['r'] - 0.257*(r-i) - 0.152, # R-r = (-0.257 +/- 0.004)*(r-i) + (0.152 +/- 0.002)
-                            # I
-                            table['v'] - 0.671*(g-i) - 0.359, # V-I = (0.671 +/- 0.002)*(g-i) + (0.359 +/- 0.002) if g-i <= 2.1
-                            # Berr
-                            table['berr'],
-                            # Verr
-                            table['verr'],
-                            # Rerr
-                            table['rerr'],
-                            # Ierr
-                            table['ierr'],
-                        ],
-                        [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
+            table['B'] = table['b']
+            table['Berr'] = table['berr']
+
+            table['V'] = table['V']
+            table['Verr'] = table['verr']
+
+            # R-r = (-0.257 +/- 0.004)*(r-i) + (0.152 +/- 0.002)
+            table['R'] = table['r'] - 0.257*(r-i) - 0.152
+            table['Rerr'] = table['rerr']
+
+            # V-I = (0.671 +/- 0.002)*(g-i) + (0.359 +/- 0.002) if g-i <= 2.1
+            table['I'] = table['v'] - 0.671*(g-i) - 0.359
+            table['Ierr'] = table['ierr']
 
         elif catalog == 'atlas':
             # ATLAS-refcat2 - has measured Gaia, GaiaBP, GaiaRP, g, r, i, z (PanSTARRS ones!)
@@ -240,30 +195,17 @@ class DB:
             R = table['r'] - 0.163 - 0.086*(table['g'] - table['r']) - 0.061*(table['g'] - table['r'])**2
             I = table['i'] - 0.387 - 0.123*(table['g'] - table['r']) - 0.034*(table['g'] - table['r'])**2
 
-            table = np.lib.recfunctions.append_fields(table,
-                        ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr', 'zerr'],
-                        [
-                            # corrected by me for ~0.02 mag median difference with Landolt (1992) standards
-                            # B
-                            B,
-                            # V
-                            V,
-                            # R
-                            R,
-                            # I
-                            I,
-                            # Berr
-                            table['dg'],
-                            # Verr
-                            table['dg'],
-                            # Rerr
-                            table['dr'],
-                            # Ierr
-                            table['di'],
-                            # zerr
-                            table['dz'],
-                        ],
-                        [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
+            table['B'] = B
+            table['Berr'] = table['dg']
+
+            table['V'] = V
+            table['Verr'] = table['dg']
+
+            table['R'] = R
+            table['Rerr'] = table['dr']
+
+            table['I'] = I
+            table['Ierr'] = table['di']
 
         elif catalog == 'gaia':
             # Gaia DR2 data
@@ -295,19 +237,17 @@ class DB:
 
             err = np.sqrt(3)*table['dg']
 
-            table = np.lib.recfunctions.append_fields(table,
-                        ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr'],
-                        [
-                            B,
-                            V,
-                            R,
-                            I,
-                            err,
-                            err,
-                            err,
-                            err,
-                        ],
-                        [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
+            table['B'] = B
+            table['Berr'] = err
+
+            table['V'] = V
+            table['Verr'] = err
+
+            table['R'] = R
+            table['Rerr'] = err
+
+            table['I'] = I
+            table['Ierr'] = err
 
         elif catalog == 'gaiaedr3':
             # Gaia EDR3 data
@@ -328,17 +268,16 @@ class DB:
 
             err = np.sqrt(3)*table['dg']
 
-            table = np.lib.recfunctions.append_fields(table,
-                        ['B', 'V', 'R', 'I', 'Berr', 'Verr', 'Rerr', 'Ierr'],
-                        [
-                            B,
-                            V,
-                            R,
-                            I,
-                            err,
-                            err,
-                            err,
-                            err,
-                        ],
-                        [np.double, np.double, np.double, np.double, np.double, np.double, np.double, np.double])
+            table['B'] = B
+            table['Berr'] = err
+
+            table['V'] = V
+            table['Verr'] = err
+
+            table['R'] = R
+            table['Rerr'] = err
+
+            table['I'] = I
+            table['Ierr'] = err
+
         return table
