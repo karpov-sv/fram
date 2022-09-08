@@ -60,11 +60,11 @@ class Fram(DB):
 
         if serial is not None:
             where.append('serial=%s')
-            opts.append(serial)
+            opts.append(int(serial))
 
         if exposure is not None and type not in ['bias', 'dcurrent', 'masterflat']:
             where.append('exposure=%s')
-            opts.append(exposure)
+            opts.append(float(exposure))
 
         if filter is not None and type in ['masterflat']:
             where.append('filter=%s')
@@ -72,11 +72,11 @@ class Fram(DB):
 
         if cropped_width is not None:
             where.append('cropped_width=%s')
-            opts.append(cropped_width)
+            opts.append(int(cropped_width))
 
         if cropped_height is not None:
             where.append('cropped_height=%s')
-            opts.append(cropped_height)
+            opts.append(int(cropped_height))
 
         if night is not None:
             where.append('night<=%s')
