@@ -8,6 +8,7 @@ from django.views.decorators.cache import cache_page
 from django.views.decorators.csrf import csrf_protect
 
 import datetime, re, urllib
+from urllib.parse import urlencode
 
 from .models import Images
 from .utils import permission_required_or_403, redirect_get, db_query
@@ -71,10 +72,10 @@ def search(request, mode='images'):
                     params['sr_value'] = 1
                     params['sr_units'] = 'arcmin'
 
-                context['lc'] = reverse('photometry_lc') + '?' + urllib.urlencode(params)
-                context['lc_json'] = reverse('photometry_json') + '?' + urllib.urlencode(params)
-                context['lc_text'] = reverse('photometry_text') + '?' + urllib.urlencode(params)
-                context['lc_mjd'] = reverse('photometry_mjd') + '?' + urllib.urlencode(params)
+                context['lc'] = reverse('photometry_lc') + '?' + urlencode(params)
+                context['lc_json'] = reverse('photometry_json') + '?' + urlencode(params)
+                context['lc_text'] = reverse('photometry_text') + '?' + urlencode(params)
+                context['lc_mjd'] = reverse('photometry_mjd') + '?' + urlencode(params)
 
             elif mode == 'images':
                 # Search full images

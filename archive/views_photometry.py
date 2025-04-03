@@ -121,9 +121,9 @@ def lc(request, mode="jpg", size=800):
         filtering = True
 
     # Quality cuts
-    idx0 = np.ones_like(mags, dtype=np.bool)
+    idx0 = np.ones_like(mags, dtype=bool)
     if filtering:
-        mask = np.zeros_like(mags, dtype=np.bool)
+        mask = np.zeros_like(mags, dtype=bool)
 
         idx0 &= flags < 2
 
@@ -203,7 +203,7 @@ def lc(request, mode="jpg", size=800):
 
         data = {'name': name, 'title': title, 'ra': ra, 'dec': dec, 'sr': sr, 'lcs': lcs}
 
-        return HttpResponse(json.dumps(data), content_type="application/json")
+        return HttpResponse(json.dumps(data, default=str), content_type="application/json")
 
     elif mode == 'text':
         response = HttpResponse(request, content_type='text/plain')
@@ -212,7 +212,7 @@ def lc(request, mode="jpg", size=800):
 
         print('# Date Time MJD Site CCD Filter Mag Magerr Flags FWHM Std Nstars', file=response)
 
-        for _ in xrange(len(times)):
+        for _ in range(len(times)):
             print(times[_], mjds[_], sites[_], ccds[_], filters[_], mags[_], magerrs[_], flags[_], fwhms[_], stds[_], nstars[_], file=response)
 
         return response
@@ -234,7 +234,7 @@ def lc(request, mode="jpg", size=800):
 
         idx = idx0
 
-        for _ in xrange(len(times[idx])):
+        for _ in range(len(times[idx])):
             if single:
                 print(mjds[idx][_], mags[idx][_], magerrs[idx][_], file=response)
             else:

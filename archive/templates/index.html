@@ -22,11 +22,11 @@
           <h5 class="card-title">{{ site.site|upper }}</h5>
 
           <p class="card-text">
-            <a href="{% url 'images' %}?site={{ site.site }}">{{ site.count }}</a> images
+            <a href="{% url 'images' %}?site={{ site.site }}" rel="nofollow">{{ site.count }}</a> images
             <br>
-            First Night: <a href="{% url 'images' %}?site={{ site.site }}&night={{ site.first }}">{{ site.first }}</a>
+            First Night: <a href="{% url 'images' %}?site={{ site.site }}&night={{ site.first }}" rel="nofollow">{{ site.first }}</a>
             <br>
-            Latest Data: <a href="{% url 'images' %}?site={{ site.site }}&night={{ site.last }}">{{ site.last }}</a>
+            Latest Data: <a href="{% url 'images' %}?site={{ site.site }}&night={{ site.last }}" rel="nofollow">{{ site.last }}</a>
           </p>
 
         </div>

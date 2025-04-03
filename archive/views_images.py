@@ -17,15 +17,12 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from skimage.transform import rescale
-try:
-    # python2
-    from StringIO import StringIO
-except ImportError:
-    # python3
-    from io import StringIO
+from io import BytesIO
 
 from astropy.io import fits
 from astropy.wcs import WCS
+
+from esutil import htm
 
 from .models import Images, Calibrations
 from .utils import permission_required_or_403
@@ -283,7 +280,7 @@ def image_preview(request, id=0, size=0):
         ldata,lheader = calibrate.crop_overscans(data, header, subtract=False)
 
     if size:
-        data = rescale(data, size/data.shape[1], mode='reflect', multichannel=False, anti_aliasing=True, preserve_range=True)
+        data = rescale(data, size/data.shape[1], mode='reflect', anti_aliasing=True, preserve_range=True)
 
     figsize = (data.shape[1], data.shape[0])
 
@@ -341,7 +338,7 @@ def image_download(request, id, raw=True):
             else:
                 data,header = calibrate.crop_overscans(data, header)
 
-        s = StringIO()
+        s = BytesIO()
         fits.writeto(s, data, header)
 
         response = HttpResponse(s.getvalue(), content_type='application/octet-stream')
@@ -464,7 +461,7 @@ def image_analysis(request, id=0, mode='fwhm'):
             ax.set_title('%s - %s %s %s - displacement mean %.1f median %.1f arcsec pixel %.1f arcsec' % (posixpath.split(filename)[-1], image.site, image.ccd, image.filter, np.mean(dist[idx]), np.median(dist[idx]), pixscale*3600))
 
     elif mode == 'filters':
-        mask = image > 30000
+        mask = data > 30000
         if dark is not None:
             mask |= dark > np.median(dark) + 3.0*np.std(dark)
 
@@ -499,7 +496,7 @@ def image_analysis(request, id=0, mode='fwhm'):
                 ax.set_ylim(-1.5, 1.5)
 
     elif mode == 'zero':
-        mask = image > 30000
+        mask = data > 30000
         if dark is not None:
             mask |= dark > np.median(dark) + 3.0*np.std(dark)
 
@@ -564,6 +561,10 @@ def image_cutout(request, id=0, size=0, mode='view'):
     data = fits.getdata(filename, -1)
     header = fits.getheader(filename, -1)
 
+    # Clean up the header from COMMENT and HISTORY keywords that may break things
+    header.remove('COMMENT', remove_all=True, ignore_missing=True)
+    header.remove('HISTORY', remove_all=True, ignore_missing=True)
+
     cdark = find_calibration_image(image, 'masterdark')
     if cdark is not None:
         dark = fits.getdata(cdark.filename, -1)
@@ -596,7 +597,7 @@ def image_cutout(request, id=0, size=0, mode='view'):
     crop,cropheader = utils.crop_image(data, x0, y0, r0, header)
 
     if mode == 'download':
-        s = StringIO()
+        s = BytesIO()
         fits.writeto(s, crop, cropheader)
 
         response = HttpResponse(s.getvalue(), content_type='application/octet-stream')
@@ -606,9 +607,9 @@ def image_cutout(request, id=0, size=0, mode='view'):
 
     if size:
         if size > crop.shape[1]:
-            crop = rescale(crop, size/crop.shape[1], mode='reflect', multichannel=False, anti_aliasing=False, order=0)
+            crop = rescale(crop, size/crop.shape[1], mode='reflect', anti_aliasing=False, order=0)
         else:
-            crop = rescale(crop, size/crop.shape[1], mode='reflect', multichannel=False, anti_aliasing=True)
+            crop = rescale(crop, size/crop.shape[1], mode='reflect', anti_aliasing=True)
 
     figsize = (crop.shape[1], crop.shape[0])
 

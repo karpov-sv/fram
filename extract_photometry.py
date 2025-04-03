@@ -17,7 +17,8 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from fram import survey, calibrate
 import astroscrappy
-import cPickle as pickle
+#import cPickle as pickle
+import pickle
 
 from fram.fram import Fram, get_night, parse_iso_time
 from fram.match import Match

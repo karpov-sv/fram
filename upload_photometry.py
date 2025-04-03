@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 import os, sys, glob
 
 import numpy as np
 import posixpath, glob, sys
 
-from StringIO import StringIO
+from io import StringIO
 
 from fram.fram import Fram, get_night, parse_iso_time
 from fram import survey
@@ -53,23 +53,26 @@ if __name__ == '__main__':
                 touch(filename + '.upload')
             continue
 
-        if False and fram.query('SELECT EXISTS(SELECT time FROM ' + table + ' WHERE time=%s AND site=%s AND ccd=%s);', (obj['time'], obj['site'], obj['ccd']), simplify=True):
+        if False and fram.query('SELECT EXISTS(SELECT time FROM ' + table + ' WHERE time=%s AND site=%s AND ccd=%s);', (obj['time'], obj['site'], obj['ccd']), simplify=True, table=False):
             if not options.replace:
                 touch(filename + '.upload')
 
             # print('Skipping', filename, 'as already in DB')
             continue
 
-        id = fram.query('SELECT id FROM images WHERE filename=%s', (obj['filename'],), simplify=True)
+        id = fram.query('SELECT id FROM images WHERE filename=%s', (obj['filename'],), simplify=True, table=False)
 
-        if options.ignore and fram.query('SELECT EXISTS(SELECT image FROM ' + table + ' WHERE image=%s);', (id,) , simplify=True):
+        if options.verbose:
+            print(obj['filename'], id)
+
+        if options.ignore and fram.query('SELECT EXISTS(SELECT image FROM ' + table + ' WHERE image=%s);', (id,) , simplify=True, table=False):
             continue
 
         if len(files) > 1:
             print(i, '/', len(files), filename, len(obj['ra']))
             sys.stdout.flush()
 
-        for i in xrange(len(obj['ra'])):
+        for i in range(len(obj['ra'])):
             print(id, obj['time'], obj['night'], obj['site'], obj['ccd'], obj['filter'], obj['ra'][i], obj['dec'][i], obj['calib_mag'][i], obj['calib_magerr'][i], int(obj['flags'][i]), obj['std'], obj['nstars'], obj['fwhm'][i], sep='\t', end='\n', file=s)
 
         columns = ['image', 'time', 'night', 'site', 'ccd', 'filter', 'ra', 'dec', 'mag', 'magerr', 'flags', 'std', 'nstars', 'fwhm']

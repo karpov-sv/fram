@@ -46,36 +46,36 @@
     </tr>
     {% for image in images %}
       <tr>
-        <td><a href="{% url 'image_details' image.id %}" title="View image details"><i class="fa fa-file-image-o"></i> {{ image.id }}</a></td>
+        <td><a href="{% url 'image_details' image.id %}" title="View image details" rel="nofollow"><i class="fa fa-file-image-o"></i> {{ image.id }}</a></td>
         <td>{{ image.time|date:"Y-m-d H:i:s" }}</td>
 
         {% with text="night="|addstr:image.night %}
-          <td><a href="?{{ request.GET|GET_remove:"night"|GET_remove:"night1"|GET_remove:"night2"|GET_append:text|GET_urlencode }}">{{ image.night }}</a></td>
+          <td><a href="?{{ request.GET|GET_remove:"night"|GET_remove:"night1"|GET_remove:"night2"|GET_append:text|GET_urlencode }}" rel="nofollow">{{ image.night }}</a></td>
         {% endwith %}
 
         {% with text="site="|addstr:image.site %}
-          <td><a href="?{{ request.GET|GET_remove:"site"|GET_append:text|GET_urlencode }}">{{ image.site }}</a></td>
+          <td><a href="?{{ request.GET|GET_remove:"site"|GET_append:text|GET_urlencode }}" rel="nofollow">{{ image.site }}</a></td>
         {% endwith %}
 
         <td>{{ image.ccd }} / {{ image.serial }}</td>
 
         {% with text="filter="|addstr:image.filter %}
-          <td><a href="?{{ request.GET|GET_remove:"filter"|GET_append:text|GET_urlencode }}">{{ image.filter }}</a></td>
+          <td><a href="?{{ request.GET|GET_remove:"filter"|GET_append:text|GET_urlencode }}" rel="nofollow">{{ image.filter }}</a></td>
         {% endwith %}
 
         {% with text="type="|addstr:image.type %}
-          <td><a href="?{{ request.GET|GET_remove:"type"|GET_append:text|GET_urlencode }}">{{ image.type }}</a></td>
+          <td><a href="?{{ request.GET|GET_remove:"type"|GET_append:text|GET_urlencode }}" rel="nofollow">{{ image.type }}</a></td>
         {% endwith %}
 
         <td>{{ image.exposure }}{% if image.binning != '1x1' %} / {{ image.binning }}{% endif %}</td>
 
         {% with text="target="|addstr:image.target %}
-          <td><a href="?{{ request.GET|GET_remove:"target"|GET_append:text|GET_urlencode }}" title="{{ image.keywords.OBJECT }}">{{ image.target }}</a></td>
+          <td><a href="?{{ request.GET|GET_remove:"target"|GET_append:text|GET_urlencode }}" title="{{ image.keywords.OBJECT }}" rel="nofollow">{{ image.target }}</a></td>
         {% endwith %}
 
         <td title="Alt/Az {{ image.keywords.TEL_ALT }} {{ image.keywords.TEL_AZ }}">{{ image.ra|floatformat:3 }} {{ image.dec|floatformat:3 }}</td>
 
-        <td><a href="{% url 'image_details' image.id %}" title="View image details">
+        <td><a href="{% url 'image_details' image.id %}" title="View image details" rel="nofollow">
           <img src="{% url 'image_preview' image.id %}" class="img-thumbnail">
         </a></td>
         <!-- <td><a href="{% url 'image_download' image.id %}" title="Download FITS"><i class="fa fa-download"></i> </a></td> -->
