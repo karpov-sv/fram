@@ -24,7 +24,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False):
 
     if site is None:
         # Simple heuristics to derive the site name
-        for _ in ['auger', 'cta-n', 'cta-s0', 'cta-s1']:
+        for _ in ['auger2', 'auger', 'cta-n', 'cta-s0', 'cta-s1']:
             if _ in filename:
                 site = _
                 break
@@ -112,7 +112,7 @@ def process_dir(dir, dbname='fram'):
 
     site = None
     # Simple heuristics to derive the site name
-    for _ in ['auger', 'cta-n', 'cta-s0', 'cta-s1']:
+    for _ in ['auger2', 'auger', 'cta-n', 'cta-s0', 'cta-s1']:
         if _ in dir:
             site = _
             break
