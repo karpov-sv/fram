@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import numpy as np
 import posixpath, glob, sys
 
@@ -12,11 +10,12 @@ import warnings
 from astropy.wcs import FITSFixedWarning
 warnings.simplefilter('ignore', FITSFixedWarning)
 
-from esutil import coords
+from stdpipe import astrometry
 
 from fram.calibrate import crop_overscans
 
 from fram.fram import Fram, get_night, parse_iso_time
+
 
 def process_file(filename, night=None, site=None, fram=None, verbose=False):
     if fram is None:
@@ -71,7 +70,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False):
     if type == 'object' and header.get('CTYPE1'):
         wcs = WCS(header)
         ra,dec = wcs.all_pix2world([0, image.shape[1], 0.5*image.shape[1]], [0, image.shape[0], 0.5*image.shape[0]], 0)
-        radius = 0.5*coords.sphdist(ra[0], dec[0], ra[1], dec[1])[0]
+        radius = 0.5*astrometry.spherical_distance(ra[0], dec[0], ra[1], dec[1])
         ra0,dec0 = ra[2],dec[2]
 
         # Frame footprint

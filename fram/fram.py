@@ -2,26 +2,21 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import numpy as np
 
-from astropy.io import fits as pyfits
-from astropy import wcs as pywcs
-
-import tempfile, datetime, posixpath, shutil, re, os
-import ephem
+import datetime
 
 from .db import DB
 from .calibrate import get_cropped_shape
 
+
 class Fram(DB):
     def __init__(self, latitude=-35.4959, longitude=-69.4497, elevation=1430, **kwargs):
+        if 'dbname' not in kwargs:
+            kwargs['dbname'] = 'fram'
+
         DB.__init__(self, **kwargs)
 
-        self.obs = ephem.Observer()
-        self.obs.lat = np.deg2rad(latitude)
-        self.obs.lon = np.deg2rad(longitude)
-        self.obs.elevation = elevation
-
-        self.moon = ephem.Moon()
-        self.sun = ephem.Sun()
+        self.latitude = latitude
+        self.longitude = longitude
 
     def find_image(self, type='masterdark', night=None, site=None, ccd=None, serial=None, exposure=None, cropped_width=None, cropped_height=None, filter=None, header=None, debug=False, full=False):
         '''Find the calibration image of given type not later than given night
@@ -109,15 +104,16 @@ class Fram(DB):
 
     def get_night(self, time, lon=None, site=None):
         if lon is None and site is None:
-            lon = np.rad2deg(self.obs.lon)
+            lon = self.longitude
 
         return get_night(time, lon, site)
 
     def get_night_time(self, night, lon=None, site=None):
         if lon is None and site is None:
-            lon = np.rad2deg(self.obs.lon)
+            lon = self.longitude
 
         return get_night_time(night, lon, site)
+
 
 def parse_iso_time(string=None, header=None):
     if string is None and header is not None:
@@ -125,8 +121,10 @@ def parse_iso_time(string=None, header=None):
 
     return datetime.datetime.strptime(string, '%Y-%m-%dT%H:%M:%S.%f')
 
+
 def get_iso_time(time):
     return time.strftime('%Y-%m-%dT%H:%M:%S.%f')
+
 
 def get_night(time, lon=None, site=None):
     '''Get night name from UTC time (given as datetime object). Should be identical to how RTS2 does it.'''
@@ -143,6 +141,7 @@ def get_night(time, lon=None, site=None):
     time1 = time + datetime.timedelta(seconds=lon*86400/360 - 86400/2)
 
     return time1.strftime('%Y%m%d')
+
 
 def get_night_time(night, lon=None, site=None):
     '''Get UTC time (given as datetime object) corresponding to the RTS2 night name.'''
