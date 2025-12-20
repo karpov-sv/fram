@@ -20,6 +20,8 @@ CREATE TABLE images (
        radius FLOAT,
        width INT,
        height INT,
+       cropped_width INT,
+       cropped_height INT,
        footprint POLYGON,
        footprint10 POLYGON,
        mean FLOAT,
