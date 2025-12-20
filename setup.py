@@ -1,28 +1,18 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 
-from __future__ import absolute_import, division, print_function, unicode_literals
-
-from setuptools import setup, find_packages
+from setuptools import setup
 
 requirements = [
+    'setuptools',
     'numpy',
     'scipy',
     'astropy',
     'matplotlib',
     'sep',
-    'statsmodels',
-    'esutil',
-    'psycopg2-binary',
-    'ephem',
-    'supersmoother',
-    # For web interface
-    'scikit-build', # needed for line-profiler below?..
-    'django',
-    # 'django-debug-toolbar',
-    # 'django-debug-toolbar-line-profiler',
-    'django-el-pagination',
-    'markdown',
+    'stdpipe',
+    'psycopg2',
+    # 'ephem',
+    # 'supersmoother',
 ]
 
 setup(
@@ -31,9 +21,8 @@ setup(
     description='FRAM telescope related codes',
     author='Sergey Karpov',
     author_email='karpov.sv@gmail.com',
-    url='',
+    url='https://github.com/karpov-sv/fram',
 
     install_requires=requirements,
     packages=['fram'],
-    package_dir={'':'src'}, # src/fram, symlink to fram, to behave nicely with development install
 )

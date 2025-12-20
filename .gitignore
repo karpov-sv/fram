@@ -107,3 +107,8 @@ venv.bak/
 *~
 *.fits
 *.ipynb
+.DS_Store
+
+nonlin/
+photometry/
+data/
