@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import numpy as np
 
 from scipy.stats import sigmaclip
-from scipy.interpolate import interp1d
 
 # Configurations
 calibration_configs = [
@@ -311,8 +310,24 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
     if linearize:
         if cfg and 'points' in cfg:
             points = np.array(cfg['points'])
+            x = np.power(10.0, points[:,0])
+            y = points[:,1]
             image = image.copy()
-            image /= interp1d(10**points[:,0], points[:,1], fill_value='extrapolate')(image)
+            flat = image.ravel()
+            interp = np.interp(flat, x, y)
+            # np.interp clamps out-of-range values; adjust with linear extrapolation.
+            if flat.size:
+                x0 = x[0]
+                x1 = x[-1]
+                if flat.min() < x0:
+                    slope_low = (y[1] - y[0]) / (x[1] - x[0])
+                    low_mask = flat < x0
+                    interp[low_mask] = y[0] + (flat[low_mask] - x0) * slope_low
+                if flat.max() > x1:
+                    slope_high = (y[-1] - y[-2]) / (x[-1] - x[-2])
+                    high_mask = flat > x1
+                    interp[high_mask] = y[-1] + (flat[high_mask] - x1) * slope_high
+            image /= interp.reshape(image.shape)
 
         else:
             if cfg and 'param1' in cfg and 'param2' in cfg:
