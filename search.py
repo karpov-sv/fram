@@ -13,6 +13,12 @@ from fram.fram import Fram
 if __name__ == '__main__':
     from optparse import OptionParser
 
+    import socket
+    if socket.gethostname() == 's122':
+        host = 's104.fzu.cz'
+    else:
+        host = None
+
     parser = OptionParser(usage="usage: %prog [options] arg")
     # 'Object in the field' search
     parser.add_option('-o', '--object', help='Object name, to be visible on all frames', action='store', dest='object', type='str', default=None)
@@ -39,7 +45,7 @@ if __name__ == '__main__':
 
     # Connection
     parser.add_option('-d', '--db', help='Database name', action='store', dest='db', type='str', default='fram')
-    parser.add_option('-H', '--host', help='Database host', action='store', dest='dbhost', type='str', default=None)
+    parser.add_option('-H', '--host', help='Database host', action='store', dest='dbhost', type='str', default=host)
 
     (options,args) = parser.parse_args()
 

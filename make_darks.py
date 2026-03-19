@@ -1,6 +1,4 @@
-#!/usr/bin/env python
-
-from __future__ import absolute_import, division, print_function, unicode_literals
+#!/usr/bin/env python3
 
 import numpy as np
 import os, glob, sys
@@ -18,6 +16,7 @@ try:
 except:
     from tqdm import tqdm
 
+
 def get_next_month(night):
     t = datetime.datetime.strptime(night, '%Y%m%d')
     year,month,day = t.year, t.month, t.day
@@ -29,6 +28,7 @@ def get_next_month(night):
         month = 1
 
     return datetime.datetime(year, month, day).strftime('%Y%m%d')
+
 
 if __name__ == '__main__':
     from optparse import OptionParser
@@ -46,6 +46,9 @@ if __name__ == '__main__':
     parser.add_option('-n', '--night', help='Night of observations', action='store', dest='night', type='str', default=None)
     parser.add_option('--night1', help='First night of observations', action='store', dest='night1', type='str', default=None)
     parser.add_option('--night2', help='Last night of observations', action='store', dest='night2', type='str', default=None)
+
+    parser.add_option('--max-temp', help='Maximal permitted temperature', action='store', dest='max_temp', type='float', default=-19)
+    parser.add_option('--min-images', help='Maximal permitted temperature', action='store', dest='min_images', type='int', default=10)
 
     parser.add_option('-r', '--replace', help='Replace existing files', action='store_true', dest='replace', default=False)
 
@@ -128,28 +131,28 @@ if __name__ == '__main__':
 
     means,medians,exps,ccds,serials,times,nights,filenames,filters,exposures,targets,sites,widths,binnings = [np.array([__[_] for __ in res]) for _ in ['mean','median','exposure','ccd','serial','time','night','filename','filter','exposure', 'target', 'site', 'width', 'binning']]
 
-    temps,airtemps,sunalts,moonalts,moondists,moonphases,ambtemps,imgids,biasavgs,dates,naxes1,naxes2 = [np.array([__['keywords'].get(_) for __ in res]) for _ in ['CCD_TEMP','CCD_AIR','SUN_ALT', 'MOONALT', 'MOONDIST', 'MOONPHA','AMBTEMP','IMGID','BIASAVG', 'DATE', 'NAXIS1', 'NAXIS2']]
+    temps,airtemps,sunalts,moonalts,moondists,moonphases,ambtemps,imgids,biasavgs,dates,naxes1,naxes2 = [np.array([__['keywords'].get(_, np.nan) for __ in res]) for _ in ['CCD_TEMP','CCD_AIR','SUN_ALT', 'MOONALT', 'MOONDIST', 'MOONPHA','AMBTEMP','IMGID','BIASAVG', 'DATE', 'NAXIS1', 'NAXIS2']]
 
     biasavgs = biasavgs.astype(np.double)
 
     # Isolate individual sequences for processing
     for cfg in calibration_configs:
         idx = (serials == cfg['serial']) & (binnings == cfg['binning'])
-        if cfg.has_key('date-before'):
+        if 'date-before' in cfg:
             idx &= dates < cfg['date-before']
-        if cfg.has_key('date-after'):
+        if 'date-after' in cfg:
             idx &= dates > cfg['date-after']
-        if cfg.has_key('width'):
+        if 'width' in cfg:
             idx &= widths == cfg['width']
 
         # FIXME: Some hard-coded quality cuts filters
         idx1 = idx \
-            & (temps < -19) \
+            & (temps < options.max_temp) \
             & (means < cfg.get('means_max', 1000)) \
             & (means > cfg.get('means_min', 0))
 
         idx1 &= ((targets==21) & (sunalts < -18) & (moonphases > 20)) \
-            | ((targets==1) & (sunalts < -10) & (moonphases > 20)) \
+            | ((targets==1) & (sunalts < -1) & (moonphases > 20)) \
             | ((targets==2000) & (sunalts < -10) & (moonphases > 20)) \
             | ((targets==2) & (sunalts < -6)) \
             | (targets==20)
@@ -158,7 +161,7 @@ if __name__ == '__main__':
             continue
 
         # Simple filter on frame mean values
-        if cfg.has_key('airtemp_a'):
+        if 'airtemp_a' in cfg:
             bias = airtemps*cfg['airtemp_a'] + cfg['airtemp_b']
         else:
             bias = np.zeros_like(means)
@@ -176,7 +179,7 @@ if __name__ == '__main__':
 
         for site in np.unique(sites[idx1]):
             for ccd in np.unique(ccds[idx1 & (sites == site)]):
-                for fsize in np.unique(zip(naxes1[idx1 & (sites == site) & (ccds == ccd)], naxes2[idx1 & (sites == site) & (ccds == ccd)]), axis=0):
+                for fsize in np.unique(list(zip(naxes1[idx1 & (sites == site) & (ccds == ccd)], naxes2[idx1 & (sites == site) & (ccds == ccd)])), axis=0):
 
                     idx11 = idx1 & (sites == site) & (ccds == ccd) & (naxes1 == fsize[0]) & (naxes2 == fsize[1])
                     idx01 = idx & (sites == site) & (ccds == ccd) & (naxes1 == fsize[0]) & (naxes2 == fsize[1])
@@ -201,7 +204,7 @@ if __name__ == '__main__':
                         fcnts = np.unique(exposures[idx2], return_counts=True)
 
                         # Require at least 10 images for at least four different exposures
-                        if np.sum(fcnts[1] > 10) >= 4:
+                        if np.sum(fcnts[1] > options.min_images) >= 4:
                             basename = os.path.join(options.basedir, site, 'masterdarks', 'dark_%s_%s_%s_%s_%s_%s' % (site, ccd, cfg['serial'], night1, cfg['binning'], '%sx%s' % (fsize[0], fsize[1])))
                             print(basename, np.sum(idx2), fcnts[1])
                             night1 = night2
@@ -214,9 +217,9 @@ if __name__ == '__main__':
 
                             # Use the header from first image
                             filename1 = filenames[idx2][0]
-                            header1 = fits.getheader(filename1)
+                            header1 = fits.getheader(filename1, -1)
 
-                            if cfg.has_key('airtemp_a') and cfg.has_key('airtemp_b'):
+                            if 'airtemp_a' in cfg and 'airtemp_b' in cfg:
                                 header1['AIRTEMPA'] = cfg['airtemp_a']
                                 header1['AIRTEMPB'] = cfg['airtemp_b']
 
@@ -237,8 +240,8 @@ if __name__ == '__main__':
 
                                 if os.path.exists(darkname) and not options.replace:
                                     print(exp, ': loading existing file')
-                                    sum = fits.getdata(darkname).astype(np.double)
-                                    header1 = fits.getheader(darkname)
+                                    sum = fits.getdata(darkname, -1).astype(np.double)
+                                    header1 = fits.getheader(darkname, -1)
                                 else:
                                     sum = None
                                     N = 0
@@ -246,7 +249,7 @@ if __name__ == '__main__':
                                     images = []
 
                                     for filename in tqdm(filenames[idx3], leave=False):
-                                        image,header = fits.getdata(filename).astype(np.double), fits.getheader(filename)
+                                        image,header = fits.getdata(filename, -1).astype(np.double), fits.getheader(filename, -1)
                                         image,header = crop_overscans(image, header, cfg=cfg)
 
                                         if header.get('DATASEC0'):
@@ -274,7 +277,7 @@ if __name__ == '__main__':
 
                                 darks[exp] = {'dark': sum, 'exp': exp, 'header': header1.copy()}
 
-                            if len(darks.keys()) < 2:
+                            if len(list(darks.keys())) < 2:
                                 continue
 
                             if not os.path.exists(basename + '_bias.fits') or not os.path.exists(basename + '_dcurrent.fits') or options.replace:
