@@ -28,7 +28,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False):
                 site = _
                 break
 
-    header = fits.getheader(filename)
+    header = fits.getheader(filename, -1)
 
     if night is None:
         time = parse_iso_time(header['DATE-OBS'])
@@ -48,7 +48,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False):
     if header.get('TARGET') is None or header.get('CCD_NAME') is None:
         return None
 
-    image = fits.getdata(filename)
+    image = fits.getdata(filename, -1)
 
     # Original (uncropped) dimensions
     width,height = header['NAXIS1'],header['NAXIS2']
