@@ -16,6 +16,7 @@ try:
 except:
     from tqdm import tqdm
 
+from stdpipe.utils import fits_write
 
 def get_next_month(night):
     t = datetime.datetime.strptime(night, '%Y%m%d')
@@ -273,7 +274,7 @@ if __name__ == '__main__':
 
                                 header1['EXPOSURE'] = exp
                                 header1['IMAGETYP'] = 'masterdark'
-                                fits.writeto(darkname, sum, header1, overwrite=True)
+                                fits_write(darkname, sum, header1, compress=True)
 
                                 darks[exp] = {'dark': sum, 'exp': exp, 'header': header1.copy()}
 
@@ -292,9 +293,9 @@ if __name__ == '__main__':
                                 header1['EXPOSURE'] = 0
 
                                 header1['IMAGETYP'] = 'bias'
-                                fits.writeto(basename + '_bias.fits', bias, header1, overwrite=True)
+                                fits_write(basename + '_bias.fits', bias, header1, compress=True)
                                 print(basename + '_bias.fits')
 
                                 header1['IMAGETYP'] = 'dcurrent'
-                                fits.writeto(basename + '_dcurrent.fits', dcurrent, header1, overwrite=True)
+                                fits_write(basename + '_dcurrent.fits', dcurrent, header1, compress=True)
                                 print(basename + '_dcurrent.fits')

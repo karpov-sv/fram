@@ -42,6 +42,9 @@ CREATE INDEX ON images(binning);
 
 CREATE INDEX images_q3c_idx ON images (q3c_ang2ipix(ra, dec));
 
+-- For faster ilike searches on OBJECT header field
+CREATE INDEX ON images(upper(keywords->>'OBJECT') text_pattern_ops);
+
 -- Dedicated view for calibration frames only
 CREATE OR REPLACE VIEW calibrations AS
 SELECT *

@@ -16,13 +16,15 @@ from esutil import coords, htm
 import statsmodels.api as sm
 from scipy.spatial import cKDTree
 
+from stdpipe import astrometry
+
 import sep
 import json
 
 try:
     import cv2
     # Much faster dilation
-    dilate = lambda image,mask: cv2.dilate(image.astype(np.uint8), mask).astype(np.bool)
+    dilate = lambda image,mask: cv2.dilate(image.astype(np.uint8), mask).astype(bool)
 except:
     from scipy.signal import fftconvolve
     dilate = lambda image,mask: fftconvolve(image, mask, mode='same') > 0.9
@@ -194,7 +196,7 @@ def get_objects_sep(image, header=None, mask=None, thresh=4.0, aper=3.0, bkgann=
         print("Preparing background mask")
 
     if mask is None:
-        mask = np.zeros_like(image, dtype=np.bool)
+        mask = np.zeros_like(image, dtype=bool)
 
     mask_bg = np.zeros_like(mask)
     mask_segm = np.zeros_like(mask)
@@ -336,7 +338,7 @@ def get_objects_sextractor(image, header=None, mask=None, thresh=2.0, aper=3.0, 
     }
 
     if mask is None:
-        mask = np.zeros_like(image, dtype=np.bool)
+        mask = np.zeros_like(image, dtype=bool)
 
     flagsname = posixpath.join(workdir, 'flags.fits')
     fits.writeto(flagsname, mask.astype(np.int16), overwrite=True)
@@ -700,7 +702,7 @@ def save_objects(filename, obj, header=None, wcs=None):
         if not np.isscalar(obj[name]) and hasattr(obj[name], '__len__') and len(obj[name]) == len(obj['x']):
             # Add new data column
             size = 1 if len(obj[name].shape) == 1 else obj[name].shape[1]
-            fmt = 'L' if obj[name].dtype == np.bool else 'D'
+            fmt = 'L' if obj[name].dtype == bool else 'D'
             col = fits.Column(name=name, array=obj[name], format='%d%s' % (size,fmt))
             columns.append(col)
 

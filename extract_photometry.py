@@ -20,6 +20,8 @@ import astroscrappy
 #import cPickle as pickle
 import pickle
 
+from stdpipe import astrometry
+
 from fram.fram import Fram, get_night, parse_iso_time
 from fram.match import Match
 
@@ -122,7 +124,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     if gain > 100:
         gain /= 1000
 
-    ra0,dec0,sr0 = survey.get_frame_center(header=header)
+    ra0,dec0,sr0 = astrometry.get_frame_center(header=header)
 
     if 'WF' in header['CCD_NAME']:
         if header['CCD_NAME'] in ['WF6', 'WF7', 'WF8']:

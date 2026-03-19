@@ -126,6 +126,7 @@ def process_dir(dir, dbname='fram'):
     files.sort()
 
     res = fram.query('SELECT filename FROM images WHERE night=%s AND site=%s', (night,site), simplify=False)
+
     filenames = [_['filename'] for _ in res]
 
     j = 0
@@ -142,6 +143,10 @@ def process_dir(dir, dbname='fram'):
 
             sys.stdout.write('\r  %d / %d - %s' % (j, len(files), filename))
             sys.stdout.flush()
+
+
+            if j % 50 == 0:
+                fram.conn.commit()
 
         except KeyboardInterrupt:
                 raise
