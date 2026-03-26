@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
-import posixpath, glob, sys
+import os, glob, sys
 
 from astropy.io import fits
 
@@ -19,13 +19,6 @@ if __name__ == '__main__':
         host = None
 
     parser = OptionParser(usage="usage: %prog [options] arg")
-    # 'Object in the field' search
-    parser.add_option('-o', '--object', help='Object name, to be visible on all frames', action='store', dest='object', type='str', default=None)
-
-    # 'Frame center in the cone' search
-    parser.add_option('--ra', help='Center RA', action='store', dest='ra', type='float', default=None)
-    parser.add_option('--dec', help='Center Dec', action='store', dest='dec', type='float', default=None)
-    parser.add_option('--sr', help='Search radius', action='store', dest='sr', type='float', default=None)
 
     # Refinement
     parser.add_option('-s', '--site', help='Site', action='store', dest='site', type='str', default=None)
@@ -36,12 +29,6 @@ if __name__ == '__main__':
     parser.add_option('-f', '--filter', help='Filter', action='store', dest='filter', type='str', default=None)
     parser.add_option('-e', '--exposure', help='Exposure', action='store', dest='exposure', type='float', default=None)
 
-    parser.add_option('-n', '--night', help='Night of observations', action='store', dest='night', type='str', default=None)
-    parser.add_option('--night1', help='First night of observations', action='store', dest='night1', type='str', default=None)
-    parser.add_option('--night2', help='Last night of observations', action='store', dest='night2', type='str', default=None)
-
-    parser.add_option('--latest', help='Show latest images first', action='store_true', dest='latest', default=False)
-
     # Connection
     parser.add_option('-d', '--db', help='Database name', action='store', dest='db', type='str', default='fram')
     parser.add_option('-H', '--host', help='Database host', action='store', dest='dbhost', type='str', default=host)
@@ -49,24 +36,6 @@ if __name__ == '__main__':
     (options,args) = parser.parse_args()
 
     wheres,wargs = [],[]
-
-    if options.object:
-        target_name,target_ra,target_dec = resolve(options.object)
-
-        if target_name:
-            print('Object resolved to:', target_name, 'at', target_ra, target_dec, file=sys.stderr)
-            wheres += ['q3c_radial_query(ra, dec, %s, %s, radius)']
-            wargs += [target_ra, target_dec]
-            wheres += ['q3c_poly_query(%s, %s, footprint10)']
-            wargs += [target_ra, target_dec]
-        else:
-            print('Can\'t resolve:', object, file=sys.stderr)
-            sys.exit(1)
-
-    elif options.ra is not None and options.dec is not None and options.sr is not None:
-        print('Searching for images with centers within', options.sr, 'deg around ', options.ra, options.dec, file=sys.stderr)
-        wheres += ['q3c_radial_query(ra, dec, %s, %s, %s)']
-        wargs += [options.ra, options.dec, options.sr]
 
     if options.site is not None:
         print('Searching for images from site', options.site, file=sys.stderr)
@@ -103,21 +72,6 @@ if __name__ == '__main__':
         wheres += ['exposure=%s']
         wargs += [options.exposure]
 
-    if options.night is not None:
-        print('Searching for images from night', options.night, file=sys.stderr)
-        wheres += ['night=%s']
-        wargs += [options.night]
-
-    if options.night1 is not None:
-        print('Searching for images night >=', options.night1, file=sys.stderr)
-        wheres += ['night>=%s']
-        wargs += [options.night1]
-
-    if options.night2 is not None:
-        print('Searching for images night <=', options.night2, file=sys.stderr)
-        wheres += ['night<=%s']
-        wargs += [options.night2]
-
     fram = Fram(dbname=options.db, dbhost=options.dbhost)
 
     if not fram:
@@ -128,8 +82,11 @@ if __name__ == '__main__':
     if wheres:
         query += ' WHERE ' + ' AND '.join(wheres)
 
-    res = fram.query(query + ' ORDER BY time ' + ('DESC' if options.latest else 'ASC'), wargs)
+    res = fram.query(query, wargs)
     print(len(res), 'images found', file=sys.stderr)
 
+    print('Checking missing files')
+
     for r in res:
-        print(r['filename'])
+        if not os.path.exists(r['filename']):
+            print(r['filename'])
