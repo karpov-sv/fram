@@ -211,6 +211,11 @@ def _process_segment(task):
         header['EXPOSURE'] = exposure
         header['IMAGETYP'] = 'masterdark'
 
+        # Remove keywords that are breaking floating point images
+        for kw in ['BZERO', 'BSCALE']:
+            if kw in header:
+                header.pop(kw)
+
         if should_write_dark:
             fits_write(dark_name, dark, header, compress=True)
 
