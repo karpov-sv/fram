@@ -366,6 +366,11 @@ def build_nightly_products(files, dark_frames, show_progress=False):
         if header_out is None:
             header_out = header.copy()
 
+            # Remove keywords that are breaking floating point images
+            for kw in ['BZERO', 'BSCALE']:
+                if kw in header_out:
+                    header_out.pop(kw)
+
         if min_image is None:
             min_image = normalized_image.copy()
             mean_image = normalized_image.copy()
