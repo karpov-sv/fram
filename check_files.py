@@ -32,6 +32,7 @@ if __name__ == '__main__':
     # Connection
     parser.add_option('-d', '--db', help='Database name', action='store', dest='db', type='str', default='fram')
     parser.add_option('-H', '--host', help='Database host', action='store', dest='dbhost', type='str', default=host)
+    parser.add_option('--delete-missing', help='Delete database entries for files missing on filesystem', action='store_true', dest='delete_missing', default=False)
 
     (options,args) = parser.parse_args()
 
@@ -87,6 +88,19 @@ if __name__ == '__main__':
 
     print('Checking missing files')
 
+    nmissing = 0
+    ndeleted = 0
+
     for r in res:
         if not os.path.exists(r['filename']):
+            nmissing += 1
             print(r['filename'])
+
+            if options.delete_missing:
+                fram.query('DELETE FROM images WHERE filename=%s', (r['filename'],))
+                ndeleted += 1
+
+    if options.delete_missing:
+        print('Deleted', ndeleted, 'database entries for missing files', file=sys.stderr)
+    else:
+        print(nmissing, 'missing files found', file=sys.stderr)
