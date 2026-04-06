@@ -1,11 +1,15 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import os
+
 import numpy as np
 
 import datetime
 
 from .db import DB
 from .calibrate import get_cropped_shape
+
+basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 __all__ = [
     'Fram',
@@ -14,6 +18,13 @@ __all__ = [
     'get_night',
     'get_night_time',
 ]
+
+
+def fix_fram_path(filename):
+    if filename is None or os.path.isabs(filename):
+        return filename
+
+    return os.path.normpath(os.path.join(basedir, filename))
 
 
 class Fram(DB):
@@ -26,7 +37,7 @@ class Fram(DB):
         self.latitude = latitude
         self.longitude = longitude
 
-    def find_image(self, type='masterdark', night=None, site=None, ccd=None, serial=None, exposure=None, cropped_width=None, cropped_height=None, filter=None, header=None, debug=False, full=False):
+    def find_image(self, type='masterdark', night=None, site=None, ccd=None, serial=None, exposure=None, cropped_width=None, cropped_height=None, filter=None, header=None, debug=False, full=False, fix_path=False):
         '''Find the calibration image of given type not later than given night
         and suitable for a given chip and filter'''
         where = []
@@ -96,12 +107,21 @@ class Fram(DB):
             res = self.query("SELECT * FROM calibrations " + where_string + " ORDER BY night ASC LIMIT 1;", opts, simplify=False)#, debug=debug)
 
         if full:
-            return res[0] if len(res) else None
-        else:
-            filename = res[0]['filename'] if len(res) else None
-            if debug:
-                print('find_image:', res[0]['filename'] if len(res) else None)
-            return filename
+            if not len(res):
+                return None
+
+            row = res[0]
+            if fix_path:
+                row['filename'] = fix_fram_path(row['filename'])
+
+            return row
+
+        filename = res[0]['filename'] if len(res) else None
+        if fix_path:
+            filename = fix_fram_path(filename)
+        if debug:
+            print('find_image:', filename)
+        return filename
 
     # Convenience
     def parse_iso_time(self, string=None, header=None):

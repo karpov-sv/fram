@@ -15,8 +15,6 @@ from fram import calibrate
 if __name__ == '__main__':
     from optparse import OptionParser
 
-    basedir = os.path.dirname(__file__)
-
     parser = OptionParser(usage="usage: %prog [options] from to")
     parser.add_option('-d', '--db', help='Database name', action='store', dest='db', type='str', default='fram')
     parser.add_option('-H', '--host', help='Database host', action='store', dest='dbhost', type='str', default=None)
@@ -43,25 +41,25 @@ if __name__ == '__main__':
 
     fram = Fram(dbname=options.db, dbhost=options.dbhost)
 
-    image = fits.getdata(filename)
-    header = fits.getheader(filename)
+    image = fits.getdata(filename, -1)
+    header = fits.getheader(filename, -1)
 
     #### Basic calibration
-    darkname = fram.find_image('masterdark', header=header, debug=False)
-    flatname = fram.find_image('masterflat', header=header, debug=False)
+    darkname = fram.find_image('masterdark', header=header, debug=False, fix_path=True)
+    flatname = fram.find_image('masterflat', header=header, debug=False, fix_path=True)
 
     if options.verbose:
         print('Dark:', darkname)
         print('Flat:', flatname)
 
     if darkname:
-        dark = fits.getdata(basedir + '/' + darkname)
+        dark = fits.getdata(darkname, -1)
     else:
-        dcname = fram.find_image('dcurrent', header=header, debug=False)
-        biasname = fram.find_image('bias', header=header, debug=False)
+        dcname = fram.find_image('dcurrent', header=header, debug=False, fix_path=True)
+        biasname = fram.find_image('bias', header=header, debug=False, fix_path=True)
         if dcname and biasname:
-            bias = fits.getdata(basedir + '/' + biasname)
-            dc = fits.getdata(basedir + '/' + dcname)
+            bias = fits.getdata(biasname, -1)
+            dc = fits.getdata(dcname, -1)
 
             dark = bias + header['EXPOSURE']*dc
         else:
@@ -70,7 +68,7 @@ if __name__ == '__main__':
     image,header = calibrate.calibrate(image, header, dark=dark)
 
     if flatname:
-        flat = fits.getdata(basedir + '/' + flatname)
+        flat = fits.getdata(flatname, -1)
 
         image *= np.nanmedian(flat)/flat
 

@@ -81,14 +81,14 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
         fram = Fram()
 
     # Basic calibration
-    darkname = fram.find_image('masterdark', header=header, debug=False)
-    flatname = fram.find_image('masterflat', header=header, debug=False)
+    darkname = fram.find_image('masterdark', header=header, debug=False, fix_path=True)
+    flatname = fram.find_image('masterflat', header=header, debug=False, fix_path=True)
 
     if darkname:
         dark = fits.getdata(darkname)
     else:
-        dcname = fram.find_image('dcurrent', header=header, debug=False)
-        biasname = fram.find_image('bias', header=header, debug=False)
+        dcname = fram.find_image('dcurrent', header=header, debug=False, fix_path=True)
+        biasname = fram.find_image('bias', header=header, debug=False, fix_path=True)
         if dcname and biasname:
             bias = fits.getdata(biasname)
             dc = fits.getdata(dcname)
