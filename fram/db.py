@@ -9,7 +9,7 @@ from stdpipe import db
 class DB(db.DB):
     """Class encapsulating the connection to PostgreSQL database"""
 
-    def get_stars(self, ra0=0, dec0=0, sr0=0, limit=10000, catalog='pickles', extra=[], extrafields=None, debug=False):
+    def get_stars(self, ra0=0, dec0=0, sr0=0, limit=10000, catalog='pickles', extra=[], extrafields=None, order=None, ascending=False, debug=False):
         """
         """
 
@@ -20,12 +20,19 @@ class DB(db.DB):
         else:
             extra_str = ""
 
+        if order is not None:
+            extra_str += " ORDER BY " + order
+            if not ascending:
+                extra_str += " DESC"
+
         # Query string, assuming we have Q3C-indexed ra and dec columns
         string = "SELECT * FROM " + catalog + " WHERE q3c_radial_query(ra, dec, %s, %s, %s) " + extra_str + " LIMIT %s;"
 
         data = (ra0, dec0, sr0, limit)
 
-        table = self.query(string, data)
+        table = self.query(string, data, verbose=debug)
+
+        # TODO: use STDPipe routines for color conversion, they are more accurate
 
         # Add some computed fields to the table
         if catalog == 'tycho2':
@@ -188,5 +195,10 @@ class DB(db.DB):
 
             table['I'] = I
             table['Ierr'] = err
+
+        elif catalog == 'gaiadr3syn':
+            for _ in ['u', 'b', 'v', 'r', 'i']:
+                table.rename_column(_, _.upper())
+                table.rename_column(_+'err', _.upper()+'err')
 
         return table
