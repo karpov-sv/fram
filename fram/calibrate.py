@@ -269,7 +269,7 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
                 header['DATASEC0'] = '[16:2063,6:2053]'
 
         elif image.shape == (4096, 4160): # C4 CMOS with overscans
-            image = image[:, -64:]
+            image = image[:, :-64]
             if header is not None:
                 header['DATASEC0'] = '[1:4096,1:4096]'
 

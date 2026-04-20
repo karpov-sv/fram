@@ -102,7 +102,8 @@ class Fram(DB):
 
         res = self.query("SELECT * FROM calibrations " + where_string + " ORDER BY night DESC LIMIT 1;", opts, simplify=False)#, debug=debug)
         if not len(res):
-            print("Can't find preceding frame, looking for succeeding one")
+            if debug:
+                print("Can't find preceding frame, looking for succeeding one")
             where_string = where_string.replace('night<=', 'night>=')
             res = self.query("SELECT * FROM calibrations " + where_string + " ORDER BY night ASC LIMIT 1;", opts, simplify=False)#, debug=debug)
 
