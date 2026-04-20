@@ -208,8 +208,8 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
             header['CD2_2'] *= -1
 
             if header.get('A_ORDER') and header.get('B_ORDER'):
-                for p in xrange(max(header['A_ORDER'], header['B_ORDER'])+1):
-                    for q in xrange(max(header['A_ORDER'], header['B_ORDER'])+1):
+                for p in range(max(header['A_ORDER'], header['B_ORDER'])+1):
+                    for q in range(max(header['A_ORDER'], header['B_ORDER'])+1):
                         if (q % 2) and header.get('A_%d_%d' % (p,q)):
                             header['A_%d_%d' % (p,q)] *= -1
                         if (q % 2) == 0 and header.get('B_%d_%d' % (p,q)):
