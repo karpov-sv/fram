@@ -36,6 +36,10 @@ if __name__ == '__main__':
     parser.add_option('-f', '--filter', help='Filter', action='store', dest='filter', type='str', default=None)
     parser.add_option('-e', '--exposure', help='Exposure', action='store', dest='exposure', type='float', default=None)
 
+    parser.add_option('-b', '--binning', help='Binning', action='store', dest='binning', type='str', default=None)
+    parser.add_option('--width', help='Usable width', action='store', dest='width', type='int', default=None)
+    parser.add_option('--height', help='Usable height', action='store', dest='height', type='int', default=None)
+
     parser.add_option('-n', '--night', help='Night of observations', action='store', dest='night', type='str', default=None)
     parser.add_option('--night1', help='First night of observations', action='store', dest='night1', type='str', default=None)
     parser.add_option('--night2', help='Last night of observations', action='store', dest='night2', type='str', default=None)
@@ -102,6 +106,21 @@ if __name__ == '__main__':
         print('Searching for images with exposure', options.exposure, file=sys.stderr)
         wheres += ['exposure=%s']
         wargs += [options.exposure]
+
+    if options.binning is not None:
+        print('Searching for images with binning', options.binning, file=sys.stderr)
+        wheres += ['binning=%s']
+        wargs += [options.binning]
+
+    if options.width is not None:
+        print('Searching for images with width', options.width, file=sys.stderr)
+        wheres += ['cropped_width=%s']
+        wargs += [options.width]
+
+    if options.height is not None:
+        print('Searching for images with height', options.height, file=sys.stderr)
+        wheres += ['cropped_height=%s']
+        wargs += [options.height]
 
     if options.night is not None:
         print('Searching for images from night', options.night, file=sys.stderr)
