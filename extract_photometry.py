@@ -1,59 +1,106 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import os, sys, glob
 
 import numpy as np
-import posixpath, glob, sys
 
 from astropy.wcs import WCS
 from astropy.io import fits
 
+from fram import calibrate
+# import astroscrappy
+#import cPickle as pickle
+# import pickle
+
+from stdpipe import astrometry, photometry, pipeline, utils
+
+from astropy.table import Table, vstack
+from astropy.stats import mad_std
+from astropy.coordinates import SkyCoord
+from astropy import units as u
+from astropy.time import Time
+
+from fram.fram import Fram, get_night
+
+
+# Disable some annoying warnings from astropy
 import warnings
 from astropy.wcs import FITSFixedWarning
+from astropy.io.fits.verify import VerifyWarning
 warnings.simplefilter(action='ignore', category=FITSFixedWarning)
-warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.simplefilter(action='ignore', category=VerifyWarning)
+warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
-from fram import survey, calibrate
-import astroscrappy
-#import cPickle as pickle
-import pickle
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+warnings.simplefilter(action='ignore', category=ConvergenceWarning)
 
-from stdpipe import astrometry
 
-from fram.fram import Fram, get_night, parse_iso_time
-from fram.match import Match
+def save_objects(filename, obj):
+    # Create directory hierarchy as necessary
+    dirname = os.path.split(filename)[0]
 
-def process_file(filename, night=None, site=None, fram=None, verbose=False, replace=False, base='photometry'):
-    if not posixpath.exists(filename):
-        return None
+    try:
+        os.makedirs(dirname)
+    except:
+        pass
+
+    if obj is None:
+        # Create dummy empty file
+        with open(filename, 'w') as f:
+            pass
+        return
+
+    obj.write(filename, format='parquet', overwrite=True)
+
+
+def process_file(filename, night=None, site=None, fram=None, verbose=False, replace=False, base='photometry', _tmpdir=None):
+
+    # Base settings
+    _workdir = None
+
+    sn = 3
+    initial_aper = 3
+    rel_aper = 1.5
+    rel_bkgann = None # [5, 7]
+    bg_size = 64
+    minarea = 3
+    spatial_order = 2
+    # fwhm_spatial_order = 2
+    sip_order = 2
+    # use_color = False # True
+
+    log = (verbose if callable(verbose) else print) if verbose else lambda *args, **kwargs: None
+
+    if not os.path.exists(filename):
+        log(f"No such file: {filename}")
+        return
 
     if site is None:
         # Simple heuristics to derive the site name
-        for _ in ['auger', 'cta-n', 'cta-s0', 'cta-s1']:
+        for _ in ['auger2', 'auger', 'cta-n', 'cta-s0', 'cta-s1']:
             if _ in filename:
                 site = _
                 break
 
     # Rough but fast checking of whether the file is already processed
-    if not replace and posixpath.exists(posixpath.splitext(posixpath.join(base, site, '/'.join(filename.split('/')[-4:])))[0] + '.cat'):
+    if not replace and os.path.exists(os.path.splitext(os.path.join(base, site, '/'.join(filename.split('/')[-4:])))[0] + '.parquet'):
         return
 
-    header = fits.getheader(filename)
+    header = fits.getheader(filename, -1)
 
     if header['IMAGETYP'] != 'object':
+        log(f"Incorrect file type: {header['IMAGETYP']}")
         return
 
     ccd = header.get('CCD_NAME')
     fname = header.get('FILTER', 'unknown')
-    time = parse_iso_time(header['DATE-OBS'])
+    time = utils.get_obs_time(header)
     target = header.get('TARGET', -1)
 
     if fname not in ['B', 'V', 'R', 'I', 'z', 'N']:
         return
 
-    if fname == 'N' and site == 'cta-n':
+    if fname == 'N': # and site == 'cta-n':
         effective_fname = 'R'
     else:
         effective_fname = fname
@@ -65,17 +112,16 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
             night = get_night(time, site=site)
 
     dirname = '%s/%s/%s/%05d/%s' % (base, site, night, target, ccd)
-    basename = posixpath.splitext(posixpath.split(filename)[-1])[0]
+    basename = os.path.splitext(os.path.split(filename)[-1])[0]
     basename = dirname + '/' + basename
-    catname = basename + '.cat'
+    objname = basename + '.parquet'
 
-    if not replace and posixpath.exists(catname):
+    if not replace and os.path.exists(objname):
         return
 
-    if verbose:
-        print(filename, site, night, ccd, fname, effective_fname)
+    log(filename, site, night, ccd, fname, effective_fname)
 
-    image = fits.getdata(filename).astype(np.double)
+    image = fits.getdata(filename, -1).astype(np.double)
 
     if fram is None:
         fram = Fram()
@@ -103,68 +149,181 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
         flat = None
 
     if dark is None or flat is None:
-        survey.save_objects(catname, None)
+        save_objects(objname, None)
         return
 
+    image0 = calibrate.crop_overscans(image, subtract=False)
     image,header = calibrate.calibrate(image, header, dark=dark)
-    image0 = image.copy()
 
-    image *= np.median(flat)/flat
+    image *= np.nanmedian(flat)/flat
 
     # Basic masking
-    mask = image > 50000
-    mask |= dark > np.median(dark) + 10.0*np.std(dark)
+    mask = ~np.isfinite(image)
+
+    satlevel = 60000
+    smask = image > satlevel # Saturation
+
+    dmask = dark > np.median(dark) + 50.0*mad_std(dark) # Hot pixels
+
+    mask |= flat < 0.5 # Highly vignetted regions
 
     cmask = np.zeros_like(mask)
 
     # WCS + catalogue
     wcs = WCS(header)
-    pixscale = np.hypot(wcs.pixel_scale_matrix[0,0], wcs.pixel_scale_matrix[0,1])
+    pixscale = astrometry.get_pixscale(wcs=wcs)
+
+    ra0,dec0,sr0 = astrometry.get_frame_center(header=header)
+
     gain = header.get('GAIN', 1.0)
     if gain > 100:
         gain /= 1000
 
-    ra0,dec0,sr0 = astrometry.get_frame_center(header=header)
-
-    if 'WF' in header['CCD_NAME']:
-        if header['CCD_NAME'] in ['WF6', 'WF7', 'WF8']:
-            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaia', extra=['g<15', 'good=1 and var=0 and multi_30=0'])
+    if 'WF' in ccd:
+        if site in ['auger', 'auger2']:
+            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaiadr3syn', extra=['r<14', 'good=1 and var=0', 'multi_30=0'])
         else:
-            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaia', extra=['g<15', 'good=1 and var=0 and multi_70=0'])
+            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaiadr3syn', extra=['r<13', 'good=1 and var=0', 'multi_70=0'])
 
     else:
-        cat = fram.get_stars(ra0, dec0, sr0, catalog='atlas', extra=[], limit=100000)
+        cat = fram.get_stars(ra0, dec0, sr0, catalog='gaiadr3syn', extra=[], limit=100000)
 
     # Cosmic rays
-    if not 'WF' in header['CCD_NAME']:
-        obj0 = survey.get_objects_sep(image, mask=mask, wcs=wcs, minnthresh=3, edge=10, use_fwhm=True, sn=10, verbose=False)
+    if not 'WF' in ccd and False:
+        obj0 = photometry.get_objects_sep(image, mask=mask, wcs=wcs, minnthresh=3, edge=10, use_fwhm=True, sn=10, verbose=False)
         cmask,cimage = astroscrappy.detect_cosmics(image0, inmask=mask, gain=gain, readnoise=10, psffwhm=np.median(obj0['fwhm']), satlevel=50000, verbose=False)
         cimage /= gain
 
-    # Object extraction
-    if ccd == 'C0':
-        obj = survey.get_objects_sep(image, mask=mask|cmask, wcs=wcs, edge=10, aper=5, verbose=False, sn=5)
+    mask_full = mask | smask | dmask
+
+    # Camera-specific configuration
+    if ccd in ['C0']:
+        fwhm_spatial_order = 0
+        refine_astrometry = False
 
     else:
-        obj = survey.get_objects_sextractor(image, mask=mask|cmask, wcs=wcs, gain=gain, edge=10, aper=3.0, minarea=3.0, r0=0, sn=3, verbose=False, _tmpdir='tmp/', extra_params=['FLUX_MAX'])
+        fwhm_spatial_order = 2
+        refine_astrometry = True
+
+    # Object extraction
+    obj = photometry.get_objects_sep(
+        image, mask=mask_full,
+        mask_detect=mask, # Simple mask for detection
+        thresh=3, r0=0, bg_size=bg_size, minarea=minarea,
+        aper=rel_aper, bkgann=rel_bkgann,
+        gain=gain,
+        fwhm=True, fwhm_spatial_order=fwhm_spatial_order,
+        optimal=False, centroid=False, group_sources=True,
+        verbose=verbose,
+    )
+    log(f"{len(obj)} final objects")
+
+    fwhm = photometry.estimate_fwhm_from_objects(obj)
+    log(f"FWHM = {fwhm:.2f} pix")
+
+    # Astrometric refinement
+    if refine_astrometry:
+        wcs = pipeline.refine_astrometry(
+            obj, cat, wcs=wcs,
+            cat_col_ra='ra', cat_col_dec='dec', cat_col_mag=effective_fname,
+            order=sip_order, # projection='ZPN',
+            verbose=verbose, update=True
+        )
+
+        if not wcs or not wcs.is_celestial:
+            log(f"Astrometric refinement failed for {filename}")
+            save_objects(objname, None)
+            return
+
+    obj['ra'], obj['dec'] = wcs.all_pix2world(obj['x'], obj['y'], 0)
 
     # Match with catalogue
-    match = Match(width=image.shape[1], height=image.shape[0])
-    sr = pixscale*np.median(obj['fwhm'])
+    cidx = np.isfinite(cat[effective_fname])
+    cidx &= cat['B'] - cat['V'] > 0.2
+    cidx &= cat['B'] - cat['V'] < 1.2
 
-    if not match.match(obj=obj, cat=cat, sr=sr, filter_name=effective_fname, order=0, bg_order=None, color_order=None, verbose=False) or match.ngoodstars < 10:
-        # if verbose:
-        #     print(match.ngoodstars, 'good matches, retrying without spatial term')
+    if site == 'cta-n' and ccd == 'C0':
+        color_term = None # {'B': -0.01, 'V': -0.04, 'R': -0.03}.get(effective_fname, None)
+    else:
+        color_term = None
 
-        # if not match.match(obj=obj, cat=cat, sr=sr, filter_name=effective_fname, order=0, bg_order=None, color_order=None, verbose=False) or match.ngoodstars < 10:
-        if verbose:
-            print('Matching failed for', filename, ':', match.ngoodstars, 'good matches')
+    col_mag1 = 'B'
+    col_mag2 = 'V'
 
-        survey.save_objects(catname, None)
+    # Calibration without color term
+    m = pipeline.calibrate_photometry(
+        obj, cat[cidx], sr=0.5*fwhm*pixscale,
+        order=spatial_order,
+        # use_color=use_color, force_color_term=color_term,
+        use_color=False, # force_color_term=-0.07,
+        accept_flags=0x01, max_intrinsic_rms=0.02,
+        cat_col_ra='ra', cat_col_dec='dec',
+        cat_col_mag=effective_fname, cat_col_mag1=col_mag1, cat_col_mag2=col_mag2,
+        verbose=verbose, bg_order=None, nonlin=False,
+    )
+
+    # Calibration with color term
+    mc = pipeline.calibrate_photometry(
+        obj, cat[cidx], sr=0.5*fwhm*pixscale,
+        order=spatial_order,
+        # use_color=use_color, force_color_term=color_term,
+        use_color=True, # force_color_term=-0.07,
+        accept_flags=0x01, max_intrinsic_rms=0.02,
+        cat_col_ra='ra', cat_col_dec='dec',
+        cat_col_mag=effective_fname, cat_col_mag1=col_mag1, cat_col_mag2=col_mag2,
+        verbose=verbose, bg_order=None, nonlin=False,
+        update=False, # Do not update the object list!
+    )
+
+    if not m or not mc:
+        log(f"Photometric match failed for {filename}")
+        save_objects(objname, None)
         return
 
-    if verbose:
-        print(match.ngoodstars, 'good matches, std =', match.std)
+
+    obj['zp'] = m['zero_fn'](obj['x'], obj['y'], mag=obj['mag'])
+    obj['zp_err'] = m['zero_fn'](obj['x'], obj['y'], mag=obj['mag'], get_err=True)
+    obj['mag_calib_err'] = np.hypot(obj['magerr'], obj['zp_err'])
+
+    obj['mag_calib_color'] = obj['mag'] + mc['zero_fn'](obj['x'], obj['y'], mag=obj['mag'])
+
+
+    # obj['time'] = time
+    # obj['mjd'] = time.mjd
+    # obj['filename'] = r['filename']
+    obj.meta['filter_name'] = effective_fname
+    obj.meta['color_term'] = mc['color_term']
+
+    obj.meta['nstars_initial'] = np.sum(m['idx0'])
+    obj.meta['nstars'] = np.sum(m['idx'])
+    obj.meta['final_frac'] = np.mean(m['idx'])
+
+    obj.meta['nstars_color'] = np.sum(mc['idx'])
+    obj.meta['final_frac_color'] = np.mean(mc['idx'])
+
+    resid = m['zero'] - m['zero_model']
+    obj.meta['std'] = np.std(resid[m['idx']])
+
+    resid_color = mc['zero'] - mc['zero_model']
+    obj.meta['std_color'] = np.std(resid_color[mc['idx']])
+
+    obj.meta['mag_limit'] = pipeline.get_detection_limit(obj, sn=5, verbose=verbose)
+
+    # obj['resid_mad'] = mad_std(resid[m['idx']])
+    # obj['norm_resid_mad'] = mad_std(resid[m['idx']]/np.max(m['zero_err']))
+
+    obj.meta['filename'] = filename
+    obj.meta['mjd'] = time.mjd
+    obj.meta['time'] = time
+    obj.meta['filter'] = fname
+    obj.meta['cat_filter'] = effective_fname
+    obj.meta['cat_filter1'] = col_mag1
+    obj.meta['cat_filter2'] = col_mag2
+    obj.meta['site'] = site
+    obj.meta['night'] = night
+    obj.meta['ccd'] = ccd
+
+    log(f"{filename}: {obj.meta['nstars']} good matches, std = {obj.meta['std']:.2f} limit = {obj.meta['mag_limit']}")
 
     # Store results
     try:
@@ -172,34 +331,28 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     except:
         pass
 
-    obj['mag_limit'] = match.mag_limit
-    obj['color_term'] = match.color_term
+    # Remove unserializable fields
+    obj.meta.pop('fwhm_phot_model', None)
 
-    obj['filename'] = filename
-    obj['site'] = site
-    obj['night'] = night
-    obj['ccd'] = ccd
-    obj['filter'] = fname
-    obj['cat_filter'] = effective_fname
-    obj['time'] = time
+    save_objects(objname, obj)
 
-    obj['mag_id'] = match.mag_id
-
-    obj['good_idx'] = match.good_idx
-    obj['calib_mag'] = match.mag
-    obj['calib_magerr'] = match.magerr
-
-    obj['std'] = match.std
-    obj['nstars'] = match.ngoodstars
-
-    survey.save_objects(catname, obj, header=header)
 
 if __name__ == '__main__':
     from optparse import OptionParser
 
+    import socket
+    if socket.gethostname() == 's122':
+        host = 's104.fzu.cz'
+        tmpdir = '/mnt/data1/karpov/tmp/'
+    else:
+        host = None
+        tmpdir = None
+
     parser = OptionParser(usage="usage: %prog [options] arg")
     parser.add_option('-d', '--db', help='Database name', action='store', dest='db', type='str', default='fram')
-    parser.add_option('-H', '--host', help='Database host', action='store', dest='dbhost', type='str', default=None)
+    parser.add_option('-H', '--host', help='Database host', action='store', dest='dbhost', type='str', default=host)
+    parser.add_option('-p', '--photodir', help='Base dir to store photometry', action='store', dest='photodir', type='str', default='photometry')
+    parser.add_option('-t', '--tmpdir', help='Temporary dir', action='store', dest='tmpdir', type='str', default=tmpdir)
     parser.add_option('-r', '--replace', help='Replace already existing records in database', action='store_true', dest='replace', default=False)
     parser.add_option('-v', '--verbose', help='Verbose', action='store_true', dest='verbose', default=False)
 
@@ -208,14 +361,14 @@ if __name__ == '__main__':
     fram = Fram(dbname=options.db, dbhost=options.dbhost)
 
     for i,filename in enumerate(files):
-        if len(files) > 1:
+        if len(files) > 1 and options.verbose:
             print(i, '/', len(files), filename)
         try:
-            process_file(filename, fram=fram, verbose=options.verbose, replace=options.replace)
+            process_file(filename, fram=fram, verbose=options.verbose, replace=options.replace, base=options.photodir, _tmpdir=options.tmpdir)
         except KeyboardInterrupt:
             raise
         except:
             print('\nException while processing:', filename, file=sys.stderr)
             import traceback
             traceback.print_exc()
-            raise
+            # raise

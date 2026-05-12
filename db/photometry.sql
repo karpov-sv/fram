@@ -1,24 +1,32 @@
 -- Photometry results
-DROP TABLE IF EXISTS photometry;
-CREATE TABLE photometry (
+DROP TABLE IF EXISTS photometry_all;
+CREATE TABLE photometry_all (
 --       image INT REFERENCES images (id) ON DELETE CASCADE,
        image INT,
-       time TIMESTAMP,
-
-       night TEXT,
-       site TEXT,
-       ccd TEXT,
-       filter TEXT,
+       time TIMESTAMP NOT NULL,
+       filter CHAR NOT NULL,
 
        ra FLOAT,
        dec FLOAT,
-       mag FLOAT,
-       magerr FLOAT,
+
+       mag FLOAT, -- calibrated magnitude fitted without color term
+       magerr FLOAT, -- magnitude error including zero point error
        flags INT,
+
+       mag_color FLOAT, -- calibrated magnitude fitted with color term
+       color_term FLOAT, -- color term
+
        std FLOAT,
+       zp_std FLOAT,
        nstars INT,
+       final_frac FLOAT,
+
        fwhm FLOAT
 );
 
-CREATE INDEX ON photometry (q3c_ang2ipix(ra, dec));
-CREATE INDEX ON photometry (image);
+-- The table is supposed to be inherited by manually selected shards
+-- corresponding to individual sites, cameras or configurations
+
+-- Indices are to be created later, after bulk populating the tables
+-- CREATE INDEX ON photometry_all (q3c_ang2ipix(ra, dec));
+-- CREATE INDEX ON photometry1 (image);
