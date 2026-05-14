@@ -100,7 +100,7 @@ calibration_configs = [
 ]
 
 # Selecting proper calibration config
-def find_calibration_config(header=None, serial=None, binning=None, width=None, height=None, date=None):
+def find_calibration_config(header=None, serial=None, binning=None, width=None, height=None, date=None, ignore_binning=False):
     if header is None:
         header = {'product_id':serial, 'BINNING':binning, 'NAXIS1':width, 'NAXIS2':height, 'DATE-OBS':date}
 
@@ -108,7 +108,7 @@ def find_calibration_config(header=None, serial=None, binning=None, width=None, 
         if 'serial' in cfg and cfg.get('serial') != header['product_id']:
             continue
 
-        if 'binning' in cfg and cfg.get('binning') != header['BINNING']:
+        if 'binning' in cfg and cfg.get('binning') != header['BINNING'] and not ignore_binning:
             continue
 
         if 'width' in cfg and cfg.get('width') != header['NAXIS1']:
@@ -181,14 +181,14 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
         # bias = rmean(list(image[2:8, 300:-300].flatten()) + list(image[-14:, 300:-300].flatten()))
         bias = rmean(image[-14:-4, 800:-800].flatten())
 
-    elif image.shape == (2062, 2074) and header.get('BINNING') == '2x2': # The same, 2x2 binning
+    elif image.shape == (2062, 2074) and (header is None or header.get('BINNING') == '2x2'): # The same, 2x2 binning
         bias = rmean(image[-7:-2, 400:-400].flatten())
 
     elif image.shape == (4127, 4144): # Official firmwares after enabling overscans in Windows utility
         # bias = rmean(list(image[3:7, 300:-300].flatten()) + list(image[-17:-4, 300:-300].flatten()))
         bias = rmean(image[-14:-4, 800:-800].flatten())
 
-    elif image.shape == (2063, 2072) and header.get('BINNING') == '2x2': # The same, 2x2 binning
+    elif image.shape == (2063, 2072) and (header is None or header.get('BINNING') == '2x2'): # The same, 2x2 binning
         bias = rmean(image[-7:-2, 400:-400].flatten())
 
     elif image.shape == (4096, 4160): # C4 CMOS with overscans
@@ -241,7 +241,7 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
             if header is not None:
                 header['DATASEC0'] = '[34:4129,12:4107]'
 
-        elif image.shape == (2062, 2074) and header.get('BINNING') == '2x2': # The same, 2x2 binning
+        elif image.shape == (2062, 2074) and (header is None or header.get('BINNING') == '2x2'): # The same, 2x2 binning
             image = image[5:-9, 17:-9]
 
             if header is not None and header.get('CRPIX1') is not None:
@@ -259,7 +259,7 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
             if header is not None:
                 header['DATASEC0'] = '[31:4126,12:4107]'
 
-        elif image.shape == (2063, 2072) and header.get('BINNING') == '2x2': # The same, 2x2 binning
+        elif image.shape == (2063, 2072) and (header is None or header.get('BINNING') == '2x2'): # The same, 2x2 binning
             image = image[5:-10, 15:-9]
 
             if header is not None and header.get('CRPIX1') is not None:
@@ -307,6 +307,15 @@ def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True
     '''Higher-level image calibration based on its header.
     Includes overscan cropping and subtraction, bias subtraction and linearization.'''
     cfg = find_calibration_config(header)
+    if cfg and not ('points' in cfg) and not ('param1' in cfg):
+        cfg0 = find_calibration_config(header, ignore_binning=True)
+        if 'points' in cfg0:
+            cfg = cfg.copy()
+            cfg['points'] = cfg0['points']
+        if 'param1' in cfg0:
+            cfg = cfg.copy()
+            cfg['param1'] = cfg0['param1']
+            cfg['param2'] = cfg0['param2']
 
     if crop:
         image,header = crop_overscans(image, header, subtract=subtract, cfg=cfg)
