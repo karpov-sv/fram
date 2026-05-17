@@ -304,11 +304,17 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
         return image
 
 def calibrate(image, header, dark=None, crop=True, subtract=True, linearize=True):
-    '''Higher-level image calibration based on its header.
-    Includes overscan cropping and subtraction, bias subtraction and linearization.'''
+    '''
+    Higher-level image calibration based on its header.
+    Includes overscan cropping and subtraction, bias subtraction and linearization.
+    '''
     cfg = find_calibration_config(header)
-    if cfg and not ('points' in cfg) and not ('param1' in cfg):
+    # If there is no linearization params for this config, try falling back to unbinned one
+    if cfg and not ('points' in cfg) and not ('param1' in cfg) and False:
         cfg0 = find_calibration_config(header, ignore_binning=True)
+        if 'points' in cfg0 or 'param1' in cfg0:
+            print("No linearization parameters, using unbinned ones")
+
         if 'points' in cfg0:
             cfg = cfg.copy()
             cfg['points'] = cfg0['points']

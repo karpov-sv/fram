@@ -64,7 +64,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     rel_bkgann = None # [5, 7]
     bg_size = 64
     minarea = 3
-    spatial_order = 2
+    # spatial_order = 2
     # fwhm_spatial_order = 2
     sip_order = 2
     # use_color = False # True
@@ -148,12 +148,15 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     else:
         flat = None
 
-    if dark is None or flat is None:
+    if dark is None:# or flat is None:
         save_objects(objname, None)
         return
 
-    image0 = calibrate.crop_overscans(image, subtract=False)
+    image0,_ = calibrate.crop_overscans(image, header.copy(), subtract=False)
     image,header = calibrate.calibrate(image, header, dark=dark)
+
+    if flat is None:
+        flat = np.ones_like(image)
 
     image *= np.nanmedian(flat)/flat
 
@@ -161,7 +164,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     mask = ~np.isfinite(image)
 
     satlevel = 60000
-    smask = image > satlevel # Saturation
+    smask = image0 > satlevel # Saturation, on original image
 
     dmask = dark > np.median(dark) + 50.0*mad_std(dark) # Hot pixels
 
@@ -198,12 +201,23 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
 
     # Camera-specific configuration
     if ccd in ['C0']:
+        spatial_order = 2
         fwhm_spatial_order = 0
         refine_astrometry = False
+        use_nonlin = False
+
+    elif ccd in ['NF3', 'NF4']:
+        rel_aper = 1
+        spatial_order = 2
+        fwhm_spatial_order = 2
+        refine_astrometry = False
+        use_nonlin = True
 
     else:
+        spatial_order = 3
         fwhm_spatial_order = 2
         refine_astrometry = True
+        use_nonlin = False
 
     # Object extraction
     obj = photometry.get_objects_sep(
@@ -259,7 +273,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
         accept_flags=0x01, max_intrinsic_rms=0.02,
         cat_col_ra='ra', cat_col_dec='dec',
         cat_col_mag=effective_fname, cat_col_mag1=col_mag1, cat_col_mag2=col_mag2,
-        verbose=verbose, bg_order=None, nonlin=False,
+        verbose=verbose, bg_order=None, nonlin=use_nonlin,
     )
 
     # Calibration with color term
@@ -271,7 +285,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
         accept_flags=0x01, max_intrinsic_rms=0.02,
         cat_col_ra='ra', cat_col_dec='dec',
         cat_col_mag=effective_fname, cat_col_mag1=col_mag1, cat_col_mag2=col_mag2,
-        verbose=verbose, bg_order=None, nonlin=False,
+        verbose=verbose, bg_order=None, nonlin=use_nonlin,
         update=False, # Do not update the object list!
     )
 
