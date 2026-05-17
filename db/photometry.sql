@@ -29,4 +29,8 @@ CREATE TABLE photometry_all (
 
 -- Indices are to be created later, after bulk populating the tables
 -- CREATE INDEX ON photometry_all (q3c_ang2ipix(ra, dec));
--- CREATE INDEX ON photometry1 (image);
+-- CREATE INDEX ON photometry_all (image);
+
+-- Examples of use:
+-- CREATE TABLE photometry_auger_nf4 (LIKE photometry_all); -- create sharded sub-table
+-- ALTER TABLE photometry_auger_nf4 INHERIT LIKE photometry_all; -- connect populated sub-table to main one

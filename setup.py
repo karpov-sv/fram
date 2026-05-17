@@ -8,6 +8,7 @@ requirements = [
     'scipy',
     'astropy',
     'matplotlib',
+    'pyarrow',
     'sep',
     'stdpipe',
     'psycopg2',

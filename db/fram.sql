@@ -50,3 +50,44 @@ CREATE OR REPLACE VIEW calibrations AS
 SELECT *
 FROM images
 WHERE type='masterdark' OR type='bias' OR type='dcurrent' OR type='masterflat';
+
+
+-- Stats as materialized views
+-- timeline
+DROP MATERIALIZED VIEW IF EXISTS image_stats_daily_site;
+CREATE MATERIALIZED VIEW image_stats_daily_site AS
+SELECT
+      night,
+      substr(night, 1, 6) AS month,
+      site,
+      count(*)::bigint AS nimages,
+      min(time) AS first_time,
+      max(time) AS last_time
+FROM images
+WHERE night IS NOT NULL
+GROUP BY night, substr(night, 1, 6), site
+ORDER BY night, site;
+
+-- site stats
+DROP MATERIALIZED VIEW IF EXISTS image_stats_site;
+CREATE MATERIALIZED VIEW image_stats_site AS
+SELECT
+      site,
+      count(*)::bigint AS nimages,
+      min(night) AS first_night,
+      max(night) AS last_night,
+      min(time) AS first_time,
+      max(time) AS last_time
+FROM images
+GROUP BY site
+ORDER BY site;
+
+-- site-ccd-type-filter
+DROP MATERIALIZED VIEW IF EXISTS image_stats_type;
+CREATE MATERIALIZED VIEW image_stats_type AS
+SELECT
+        site, ccd, serial, type, filter,
+        count(1) as nimages
+FROM images
+GROUP BY site, ccd, serial, type, filter
+ORDER BY site, ccd, serial, type, filter;

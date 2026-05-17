@@ -108,7 +108,10 @@ venv.bak/
 *.fits
 *.ipynb
 .DS_Store
+\#*
 
 nonlin/
+nonlin.1/
 photometry/
 data/
+tmp/
