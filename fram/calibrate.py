@@ -144,12 +144,23 @@ def parse_det(string):
 
     return x0,x1,y0,y1
 
+def datasec_usable(shape, header):
+    if 'DATASEC' in header:
+        x1,x2,y1,y2 = parse_det(header.get('DATASEC'))
+
+        if x2 > shape[1] or y2 > shape[0]:
+            return False
+
+        return True
+
+    return False
+
 def get_cropped_shape(shape=None, header=None):
     '''Get the shape of an image after overscan cropping based on its header or, well, shape'''
     if shape is None and header is not None:
         shape = (header['NAXIS2'], header['NAXIS1'])
 
-    if header is None or not header.get('DATASEC'):
+    if header is None or not header.get('DATASEC') or not datasec_usable(shape, header):
         if shape == (4124, 4148) or shape == (4127, 4144) or shape == (4096, 4160):
             result = (4096, 4096)
         elif shape == (2062, 2074) or shape == (2063, 2072):
@@ -230,7 +241,7 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
     if bias is not None and subtract:
             image = image.copy() - bias
 
-    if header is None or not header.get('DATASEC'):
+    if header is None or not header.get('DATASEC') or not datasec_usable(image.shape, header):
         # Special handling of legacy G4 data - manually adjusted overscan-free regions
         if image.shape == (4124, 4148): # Initial patched G4 firmware
             image = image[11:-17, 33:-19]
