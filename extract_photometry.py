@@ -189,7 +189,7 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
             cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaiadr3syn', extra=['r<13', 'good=1 and var=0', 'multi_70=0'])
 
     else:
-        cat = fram.get_stars(ra0, dec0, sr0, catalog='gaiadr3syn', extra=[], limit=100000)
+        cat = fram.get_stars(ra0, dec0, sr0, catalog='gaiadr3syn', extra=['var=0'], limit=100000)
 
     # Cosmic rays
     if not 'WF' in ccd and False:
@@ -233,7 +233,13 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     log(f"{len(obj)} final objects")
 
     fwhm = photometry.estimate_fwhm_from_objects(obj)
+    if not fwhm or not np.isfinite(fwhm):
+        fwhm = obj.meta['fwhm_phot']
     log(f"FWHM = {fwhm:.2f} pix")
+
+    # Some fallbacks
+    if ccd in ['C0'] and len(obj) < 30:
+        spatial_order = 0
 
     # Astrometric refinement
     if refine_astrometry:
