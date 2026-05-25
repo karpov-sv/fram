@@ -121,7 +121,9 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
 
     log(filename, site, night, ccd, fname, effective_fname)
 
-    image = fits.getdata(filename, -1).astype(np.double)
+    image = fits.getdata(filename, -1).astype(np.float32)
+
+    log(f"Image: {image.shape[1]} x {image.shape[0]}")
 
     if fram is None:
         fram = Fram()
@@ -160,6 +162,8 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
 
     image *= np.nanmedian(flat)/flat
 
+    log(f"Image calibrated")
+
     # Basic masking
     mask = ~np.isfinite(image)
 
@@ -184,12 +188,14 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
 
     if 'WF' in ccd:
         if site in ['auger', 'auger2']:
-            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaiadr3syn', extra=['r<14', 'good=1 and var=0', 'multi_30=0'])
+            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaiadr3syn', extra=['r<12', 'var=0'])
         else:
-            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaiadr3syn', extra=['r<13', 'good=1 and var=0', 'multi_70=0'])
+            cat = fram.get_stars(ra0, dec0, sr0, limit=100000, catalog='gaiadr3syn', extra=['r<10', 'var=0', 'multi_70=0'])
 
     else:
         cat = fram.get_stars(ra0, dec0, sr0, catalog='gaiadr3syn', extra=['var=0'], limit=100000)
+
+    log(f"{len(cat)} catalogue stars")
 
     # Cosmic rays
     if not 'WF' in ccd and False:
@@ -209,6 +215,12 @@ def process_file(filename, night=None, site=None, fram=None, verbose=False, repl
     elif ccd in ['NF3', 'NF4']:
         rel_aper = 1
         spatial_order = 2
+        fwhm_spatial_order = 2
+        refine_astrometry = False
+        use_nonlin = True
+
+    elif ccd in ['WF8']:
+        spatial_order = 3
         fwhm_spatial_order = 2
         refine_astrometry = False
         use_nonlin = True

@@ -190,24 +190,24 @@ def crop_overscans(image, header=None, subtract=True, cfg=None):
 
     if image.shape == (4124, 4148): # Initial patched G4 firmware
         # bias = rmean(list(image[2:8, 300:-300].flatten()) + list(image[-14:, 300:-300].flatten()))
-        bias = rmean(image[-14:-4, 800:-800].flatten())
+        if subtract: bias = rmean(image[-14:-4, 800:-800].flatten())
 
     elif image.shape == (2062, 2074) and (header is None or header.get('BINNING') == '2x2'): # The same, 2x2 binning
-        bias = rmean(image[-7:-2, 400:-400].flatten())
+        if subtract: bias = rmean(image[-7:-2, 400:-400].flatten())
 
     elif image.shape == (4127, 4144): # Official firmwares after enabling overscans in Windows utility
         # bias = rmean(list(image[3:7, 300:-300].flatten()) + list(image[-17:-4, 300:-300].flatten()))
-        bias = rmean(image[-14:-4, 800:-800].flatten())
+        if subtract: bias = rmean(image[-14:-4, 800:-800].flatten())
 
     elif image.shape == (2063, 2072) and (header is None or header.get('BINNING') == '2x2'): # The same, 2x2 binning
-        bias = rmean(image[-7:-2, 400:-400].flatten())
+        if subtract: bias = rmean(image[-7:-2, 400:-400].flatten())
 
     elif image.shape == (4096, 4160): # C4 CMOS with overscans
         # bias = rmean(image[:, -64:].flatten())
         pass # Disable overscan subtraction for now
 
     elif image.shape == (1026, 1062): # Overscan-enabled custom G2 on La Palma
-        bias = rmean(image[:, -5:].flatten())
+        if subtract: bias = rmean(image[:, -5:].flatten())
 
     elif header and header.get('product_id') >= 6000 and header.get('SHIFT') is not None and image.shape == (4096, 4096):
         # Ultra-special handling of a MICCD frames what are vertically flipped in respect to GXCCD ones
