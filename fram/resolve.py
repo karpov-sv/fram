@@ -1,26 +1,43 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-try:
-    from urllib2 import urlopen
-except:
-    from urllib.request import urlopen
-
-try:
-    from urllib import urlencode
-except:
-    from urllib.parse import urlencode
-
 import xml.dom.minidom as minidom
+import xml.parsers.expat
 import re
 
+import requests
+
+# Sesame servers tried, in order, when the previous one is unreachable, answers
+# with an HTTP error, or answers with something that is not XML (an outage page)
+sesame_mirrors = [
+    'https://cds.unistra.fr/cgi-bin/nph-sesame',
+    'https://vizier.cfa.harvard.edu/viz-bin/nph-sesame',
+]
+
+# Short connect timeout, so that a server which does not accept connections at
+# all (the usual way CDS goes down) is skipped quickly; a longer read timeout,
+# as NED is slow to answer on a miss
+sesame_timeout = (5, 30)
+
 def simbadResolve(name = 'm31'):
-    web = 'http://cdsweb.u-strasbg.fr/viz-bin/nph-sesame/-oxpi/SNVA?'
-    res = urlopen(web + urlencode([('obj', name)]).split('=')[1]).read()
+    doc = None
+
+    for server in sesame_mirrors:
+        try:
+            res = requests.get(server + '/-oxpi/SN',
+                               params=requests.utils.quote(name),
+                               timeout=sesame_timeout)
+            res.raise_for_status()
+            doc = minidom.parseString(res.content)
+            break
+        except (requests.exceptions.RequestException, xml.parsers.expat.ExpatError):
+            continue
+
+    if doc is None:
+        # No server could be asked
+        return "", 0, 0
 
     try:
-        xml = minidom.parseString(res)
-
-        r = xml.getElementsByTagName('Resolver')[0]
+        r = doc.getElementsByTagName('Resolver')[0]
 
         name = r.getElementsByTagName('oname')[0].childNodes[0].nodeValue
         ra = float(r.getElementsByTagName('jradeg')[0].childNodes[0].nodeValue)
